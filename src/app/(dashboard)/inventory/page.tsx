@@ -27,8 +27,17 @@ export default async function InventoryPage() {
           <Link href="/inventory/scan" className="text-xs text-teal-deep hover:underline">
             Scan to Pull
           </Link>
+          <Link href="/inventory/labels" className="text-xs text-teal-deep hover:underline">
+            QR Labels
+          </Link>
           <Link href="/inventory/purchase-orders" className="text-xs text-teal-deep hover:underline">
             Purchase Orders
+          </Link>
+          <Link
+            href="/inventory/quick-add"
+            className="border border-teal/40 text-teal-deep hover:bg-teal/10 text-sm px-3 py-2 rounded-control transition-colors"
+          >
+            Quick Add
           </Link>
           <Link
             href="/inventory/new"
