@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #3E4C59;
+  --color-ink-strong: #2C3944;
+  --color-gold: #B8935E;
+  --color-gold-light: #D9BC85;
+  --color-gold-deep: #A07B4A;
+  --color-teal: #4EC5C1;
+  --color-teal-deep: #2FA6A2;
+  --color-marble: #F7F5F1;
+  --color-cream: #EDE8DF;
+  --color-marquina: #17181A;
+  --color-marquina-soft: #1F2124;
+  --color-sage: #A9BCB0;
+  --color-success: #6E8F7C;
+  --color-danger: #C0654F;
+
+  --font-display: "Marcellus", serif;
+  --font-sans: "Manrope", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --radius-card: 14px;
+  --radius-control: 10px;
+
+  --shadow-soft: 0 1px 2px rgb(23 24 26 / 0.04), 0 8px 24px rgb(23 24 26 / 0.06);
+  --shadow-lift: 0 2px 4px rgb(23 24 26 / 0.06), 0 16px 40px rgb(23 24 26 / 0.10);
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ---------- Base atmosphere ---------- */
+
+body {
+  background-color: var(--color-marble);
+  color: var(--color-ink);
+  /* faint marble veining: layered radial washes + grain */
+  background-image:
+    radial-gradient(ellipse 80% 60% at 70% -10%, rgb(184 147 94 / 0.05), transparent),
+    radial-gradient(ellipse 60% 50% at 10% 110%, rgb(169 188 176 / 0.07), transparent),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.02 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgb(184 147 94 / 0.25);
+}
+
+/* Refined scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgb(62 76 89 / 0.18);
+  border-radius: 8px;
+  border: 3px solid var(--color-marble);
+}
+::-webkit-scrollbar-thumb:hover { background: rgb(184 147 94 / 0.5); }
+
+/* ---------- Gold hairline (signature divider) ---------- */
+
+.gold-hairline {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-gold-light), var(--color-gold-deep), transparent);
+  opacity: 0.6;
+}
+
+/* ---------- Card behaviors ---------- */
+
+.card-lift {
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+.card-lift:hover {
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-2px);
+}
+
+/* ---------- Keyframes ---------- */
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes logo-bloom {
+  0%   { opacity: 0; transform: scale(0.82); filter: blur(6px); }
+  60%  { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.7; }
+}
+
+@keyframes letter-in {
+  from { opacity: 0; transform: translateY(10px); letter-spacing: 0.35em; }
+  to   { opacity: 1; transform: translateY(0); letter-spacing: 0.12em; }
+}
+
+@keyframes hairline-grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+@keyframes splash-exit {
+  to { opacity: 0; visibility: hidden; }
+}
+
+/* Staggered reveal helper: apply .reveal-stagger to a container */
+.reveal-stagger > * {
+  animation: fade-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.reveal-stagger > *:nth-child(1) { animation-delay: 0.03s; }
+.reveal-stagger > *:nth-child(2) { animation-delay: 0.09s; }
+.reveal-stagger > *:nth-child(3) { animation-delay: 0.15s; }
+.reveal-stagger > *:nth-child(4) { animation-delay: 0.21s; }
+.reveal-stagger > *:nth-child(5) { animation-delay: 0.27s; }
+.reveal-stagger > *:nth-child(6) { animation-delay: 0.33s; }
