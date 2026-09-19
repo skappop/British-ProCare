@@ -13,6 +13,7 @@ import {
   FlaskConical,
   UserCog,
   DoorOpen,
+  Sheet,
 } from 'lucide-react'
 
 const NAV = [
@@ -26,6 +27,7 @@ const NAV = [
   { href: '/procedures', label: 'Procedures', icon: Stethoscope },
   { href: '/reports', label: 'Reports', icon: TrendingUp },
   { href: '/staff', label: 'Staff', icon: UserCog },
+  { href: '/admin/sheets', label: 'Google Sheets', icon: Sheet },
 ]
 
 export default function SidebarNav() {
