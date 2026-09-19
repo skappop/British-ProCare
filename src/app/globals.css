@@ -27,6 +27,32 @@
   --shadow-lift: 0 2px 4px rgb(23 24 26 / 0.06), 0 16px 40px rgb(23 24 26 / 0.10);
 
   --animate-fade-up: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  /* ---------- Motion tokens ---------- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-soft: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+
+  /* Overrides Tailwind's symmetric default so bare transition-* utilities
+     (transition-colors, transition-shadow, etc.) commit immediately instead
+     of easing in and out equally. */
+  --default-transition-timing-function: var(--ease-out);
+}
+
+/* Reduced motion means fewer and gentler animations, not zero: opacity still
+   transitions, but movement, scale and infinite loops collapse to instant. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ---------- Base atmosphere ---------- */
@@ -67,7 +93,7 @@ body {
 /* ---------- Card behaviors ---------- */
 
 .card-lift {
-  transition: box-shadow 0.3s ease, transform 0.3s ease;
+  transition: box-shadow 200ms var(--ease-out), transform 200ms var(--ease-out);
 }
 .card-lift:hover {
   box-shadow: var(--shadow-lift);
@@ -81,10 +107,21 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Opacity-only route transition — no positional slide, so cached/instant
+   navigations never read as page-jank. */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes stagger-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes logo-bloom {
-  0%   { opacity: 0; transform: scale(0.82); filter: blur(6px); }
-  60%  { opacity: 1; filter: blur(0); }
-  100% { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 @keyframes glow-pulse {
@@ -93,8 +130,8 @@ body {
 }
 
 @keyframes letter-in {
-  from { opacity: 0; transform: translateY(10px); letter-spacing: 0.35em; }
-  to   { opacity: 1; transform: translateY(0); letter-spacing: 0.12em; }
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes hairline-grow {
@@ -102,17 +139,22 @@ body {
   to   { transform: scaleX(1); }
 }
 
-@keyframes splash-exit {
-  to { opacity: 0; visibility: hidden; }
+/* Softer than Tailwind's animate-pulse (opacity 1 → .5): a grid of skeletons
+   at that contrast swing reads as flicker rather than "pending". */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.65; }
+  50%      { opacity: 1; }
+}
+.skeleton-pulse {
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
 }
 
-/* Staggered reveal helper: apply .reveal-stagger to a container */
+/* Staggered reveal helper: apply .reveal-stagger to a container.
+   Capped at 3 delay steps so grids of any size still fully settle by 280ms —
+   stagger should communicate order, not gate the view. */
 .reveal-stagger > * {
-  animation: fade-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: stagger-in 0.2s var(--ease-out) both;
 }
-.reveal-stagger > *:nth-child(1) { animation-delay: 0.03s; }
-.reveal-stagger > *:nth-child(2) { animation-delay: 0.09s; }
-.reveal-stagger > *:nth-child(3) { animation-delay: 0.15s; }
-.reveal-stagger > *:nth-child(4) { animation-delay: 0.21s; }
-.reveal-stagger > *:nth-child(5) { animation-delay: 0.27s; }
-.reveal-stagger > *:nth-child(6) { animation-delay: 0.33s; }
+.reveal-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.reveal-stagger > *:nth-child(2) { animation-delay: 40ms; }
+.reveal-stagger > *:nth-child(n+3) { animation-delay: 80ms; }

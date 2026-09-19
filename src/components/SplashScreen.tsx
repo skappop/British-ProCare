@@ -1,26 +1,49 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Image from 'next/image'
 
-export default function SplashScreen() {
-  const [show, setShow] = useState(false)
+const HOLD_MS = 700
+const EXIT_MS = 220
 
-  useEffect(() => {
-    if (!sessionStorage.getItem('procare_splash_seen')) {
-      setShow(true)
-      sessionStorage.setItem('procare_splash_seen', '1')
-      const t = setTimeout(() => setShow(false), 3200)
-      return () => clearTimeout(t)
-    }
+export default function SplashScreen() {
+  const [phase, setPhase] = useState<'hidden' | 'visible' | 'exiting'>('hidden')
+
+  const dismiss = useCallback(() => {
+    setPhase((p) => (p === 'visible' ? 'exiting' : p))
   }, [])
 
-  if (!show) return null
+  useEffect(() => {
+    if (sessionStorage.getItem('procare_splash_seen')) return
+    sessionStorage.setItem('procare_splash_seen', '1')
+    setPhase('visible')
+    const t = setTimeout(dismiss, HOLD_MS)
+    return () => clearTimeout(t)
+  }, [dismiss])
+
+  // Any pointer or key press skips straight to the exit transition —
+  // the splash should never hold a clinician at a chairside tablet.
+  useEffect(() => {
+    if (phase !== 'visible') return
+    window.addEventListener('pointerdown', dismiss)
+    window.addEventListener('keydown', dismiss)
+    return () => {
+      window.removeEventListener('pointerdown', dismiss)
+      window.removeEventListener('keydown', dismiss)
+    }
+  }, [phase, dismiss])
+
+  if (phase === 'hidden') return null
 
   return (
     <div
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-marquina"
-      style={{ animation: 'splash-exit 0.6s ease 2.6s both' }}
+      style={{
+        opacity: phase === 'exiting' ? 0 : 1,
+        pointerEvents: phase === 'exiting' ? 'none' : 'auto',
+        transition: `opacity ${EXIT_MS}ms var(--ease-out)`,
+      }}
+      onTransitionEnd={() => phase === 'exiting' && setPhase('hidden')}
     >
       {/* breathing gold glow behind the logo */}
       <div
@@ -31,25 +54,25 @@ export default function SplashScreen() {
         }}
       />
 
-      <div style={{ animation: 'logo-bloom 1.1s cubic-bezier(0.16, 1, 0.3, 1) both' }}>
+      <div style={{ animation: 'logo-bloom 0.45s var(--ease-out) both' }}>
         <Image src="/logo.png" alt="" width={130} height={130} priority />
       </div>
 
       <h1
         className="font-display text-gold-light text-2xl mt-8 uppercase"
-        style={{ animation: 'letter-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.55s both' }}
+        style={{ animation: 'letter-in 0.4s var(--ease-out) 0.15s both' }}
       >
         British ProCare
       </h1>
 
       <div
         className="gold-hairline w-48 mt-4"
-        style={{ animation: 'hairline-grow 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.9s both' }}
+        style={{ animation: 'hairline-grow 0.35s var(--ease-out) 0.3s both' }}
       />
 
       <p
         className="text-white/40 text-xs tracking-[0.3em] uppercase mt-4 font-sans"
-        style={{ animation: 'fade-up 0.7s ease 1.2s both' }}
+        style={{ animation: 'letter-in 0.35s var(--ease-out) 0.4s both' }}
       >
         Dental Clinics · Dr. Heba Al-Batanony
       </p>

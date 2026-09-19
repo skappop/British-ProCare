@@ -27,19 +27,19 @@ export default async function LoginPage({
             animation: 'glow-pulse 3s ease-in-out infinite',
           }}
         />
-        <div style={{ animation: 'logo-bloom 1.2s cubic-bezier(0.16,1,0.3,1) both' }}>
+        <div style={{ animation: 'logo-bloom 0.5s var(--ease-out) both' }}>
           <Image src="/logo.png" alt="British ProCare" width={150} height={150} priority />
         </div>
         <h1
           className="font-display text-gold-light text-3xl mt-10 uppercase text-center"
-          style={{ animation: 'letter-in 1s cubic-bezier(0.16,1,0.3,1) 0.4s both' }}
+          style={{ animation: 'letter-in 0.45s var(--ease-out) 0.2s both' }}
         >
           British ProCare
         </h1>
-        <div className="gold-hairline w-52 mt-5" style={{ animation: 'hairline-grow 0.9s ease 0.8s both' }} />
+        <div className="gold-hairline w-52 mt-5" style={{ animation: 'hairline-grow 0.35s var(--ease-out) 0.4s both' }} />
         <p
           className="text-white/40 text-xs tracking-[0.3em] uppercase mt-5"
-          style={{ animation: 'fade-up 0.8s ease 1.1s both' }}
+          style={{ animation: 'letter-in 0.35s var(--ease-out) 0.5s both' }}
         >
           Dental Clinics
         </p>

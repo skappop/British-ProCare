@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { FileText, Loader2 } from 'lucide-react'
 import { getPatientReportData } from '@/app/(dashboard)/patients/[id]/reportActions'
 import { buildReportPdf } from '@/components/report/buildReportPdf'
+import { withMinDuration } from '@/lib/utils'
 
 async function loadLogo(cache: React.MutableRefObject<string | null>): Promise<string | null> {
   if (cache.current !== null) return cache.current || null
@@ -41,16 +42,21 @@ export default function PatientReportButton({
     setErr(null)
     setLoading(true)
     try {
-      const [report, logo] = await Promise.all([getPatientReportData(patientId), loadLogo(logoCache)])
-      if (!report) {
-        setErr('Could not load report')
-        return
-      }
-      const { jsPDF } = await import('jspdf')
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' })
-      buildReportPdf(doc, report, logo)
-      const safeName = report.patient.full_name.replace(/[^\w\s-]/g, '').trim() || 'patient'
-      doc.save(`Report - ${safeName}.pdf`)
+      await withMinDuration(
+        (async () => {
+          const [report, logo] = await Promise.all([getPatientReportData(patientId), loadLogo(logoCache)])
+          if (!report) {
+            setErr('Could not load report')
+            return
+          }
+          const { jsPDF } = await import('jspdf')
+          const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+          buildReportPdf(doc, report, logo)
+          const safeName = report.patient.full_name.replace(/[^\w\s-]/g, '').trim() || 'patient'
+          doc.save(`Report - ${safeName}.pdf`)
+        })(),
+        350
+      )
     } catch {
       setErr('Report failed to generate')
     } finally {

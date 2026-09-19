@@ -11,6 +11,7 @@ import {
   PRIMARY_LOWER,
 } from './toothGeometry'
 import { TOOTH_STYLE, STATUS_ORDER, type ToothStatus } from './toothStatus'
+import { withMinDuration } from '@/lib/utils'
 
 export type ToothData = { status: ToothStatus; note?: string }
 export type OdontogramData = Record<string, ToothData>
@@ -71,7 +72,7 @@ export default function DentalChart({
       return next
     })
     setSavingFdi(fdi)
-    onSaveTooth(fdi, status, noteVal)
+    withMinDuration(onSaveTooth(fdi, status, noteVal), 350)
       .then((res) => {
         if (!res.ok) {
           setData((d) => {

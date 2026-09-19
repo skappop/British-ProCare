@@ -119,7 +119,7 @@ export default function LabelSheet({ items }: { items: Item[] }) {
               // eslint-disable-next-line @next/next/no-img-element
               <img src={qr[it.id]} alt="" className="w-28 h-28" />
             ) : (
-              <div className="w-28 h-28 bg-marble animate-pulse rounded" />
+              <div className="w-28 h-28 bg-marble skeleton-pulse rounded" />
             )}
             <p className="mt-2 font-mono text-[11px] font-semibold text-ink-strong break-all leading-tight">{it.sku}</p>
             <p className="text-[10px] text-ink/55 leading-tight line-clamp-2">{it.name}</p>

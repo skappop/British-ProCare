@@ -62,14 +62,18 @@ export default function AppShell({
         </div>
       </header>
 
-      {/* Backdrop (mobile only) */}
-      {open && (
-        <div className="md:hidden fixed inset-0 bg-black/45 z-40" onClick={() => setOpen(false)} aria-hidden />
-      )}
+      {/* Backdrop (mobile only) — always mounted so it fades in sync with the panel */}
+      <div
+        className={`md:hidden fixed inset-0 bg-black/45 z-40 transition-opacity duration-[400ms] ease-out-soft ${
+          open ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setOpen(false)}
+        aria-hidden
+      />
 
       {/* Sidebar — static on desktop, slide-in drawer on mobile */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 max-w-[82vw] bg-marquina text-white flex flex-col transition-transform duration-300 ease-out md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 max-w-[82vw] bg-marquina text-white flex flex-col transition-transform duration-[400ms] ease-out-soft md:transition-none md:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

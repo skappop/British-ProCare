@@ -28,7 +28,7 @@ export default function DeleteButton({
     <button
       type="button"
       onClick={handleClick}
-      className={`text-xs px-3 py-1.5 rounded-control border transition-all ${
+      className={`inline-flex items-center justify-center min-w-[8.5rem] text-xs px-3 py-1.5 rounded-control border transition-[background-color,border-color,color,transform] duration-150 active:scale-[0.97] ${
         armed
           ? 'bg-danger text-white border-danger'
           : 'bg-white text-danger border-danger/30 hover:border-danger'

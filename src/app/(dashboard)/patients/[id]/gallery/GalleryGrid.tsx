@@ -42,7 +42,7 @@ export default function GalleryGrid({ images }: { images: ImageRecord[] }) {
                     className="w-full aspect-square object-cover"
                   />
                 ) : (
-                  <div className="w-full aspect-square bg-marble animate-pulse" />
+                  <div className="w-full aspect-square bg-marble skeleton-pulse" />
                 )}
                 <div className="p-2">
                   <p className="text-xs text-ink/60 capitalize">{img.image_type.replace(/_/g, ' ')}</p>
