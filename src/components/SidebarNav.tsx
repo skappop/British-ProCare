@@ -14,28 +14,85 @@ import {
   UserCog,
   DoorOpen,
   Sheet,
+  Settings as SettingsIcon,
 } from 'lucide-react'
 
-const NAV = [
-  { href: '/reception', label: 'Walk-In', icon: DoorOpen },
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/appointments', label: 'Appointments', icon: CalendarDays },
-  { href: '/recall', label: 'Recall', icon: BellRing },
-  { href: '/patients', label: 'Patients', icon: Users },
-  { href: '/lab-cases', label: 'Lab Cases', icon: FlaskConical },
-  { href: '/inventory', label: 'Inventory', icon: Package },
-  { href: '/procedures', label: 'Procedures', icon: Stethoscope },
-  { href: '/reports', label: 'Reports', icon: TrendingUp },
-  { href: '/staff', label: 'Staff', icon: UserCog },
-  { href: '/admin/sheets', label: 'Google Sheets', icon: Sheet },
-]
+interface NavConfig {
+  features_enabled?: {
+    appointments?: boolean
+    recall?: boolean
+    inventory?: boolean
+    lab_cases?: boolean
+    staff?: boolean
+    reports?: boolean
+  }
+  google_sheets_enabled?: boolean
+}
 
-export default function SidebarNav() {
+interface SidebarNavProps {
+  config?: NavConfig | null
+}
+
+export default function SidebarNav({ config }: SidebarNavProps) {
   const pathname = usePathname()
+
+  // Define all possible navigation items with their visibility logic
+  const NAV = [
+    { href: '/reception', label: 'Walk-In', icon: DoorOpen, visible: true },
+    { href: '/', label: 'Dashboard', icon: LayoutDashboard, visible: true },
+    {
+      href: '/appointments',
+      label: 'Appointments',
+      icon: CalendarDays,
+      visible: config?.features_enabled?.appointments !== false
+    },
+    {
+      href: '/recall',
+      label: 'Recall',
+      icon: BellRing,
+      visible: config?.features_enabled?.recall !== false
+    },
+    { href: '/patients', label: 'Patients', icon: Users, visible: true },
+    {
+      href: '/lab-cases',
+      label: 'Lab Cases',
+      icon: FlaskConical,
+      visible: config?.features_enabled?.lab_cases !== false
+    },
+    {
+      href: '/inventory',
+      label: 'Inventory',
+      icon: Package,
+      visible: config?.features_enabled?.inventory !== false
+    },
+    { href: '/procedures', label: 'Procedures', icon: Stethoscope, visible: true },
+    {
+      href: '/reports',
+      label: 'Reports',
+      icon: TrendingUp,
+      visible: config?.features_enabled?.reports !== false
+    },
+    {
+      href: '/staff',
+      label: 'Staff',
+      icon: UserCog,
+      visible: config?.features_enabled?.staff !== false
+    },
+    {
+      href: '/admin/sheets',
+      label: 'Google Sheets',
+      icon: Sheet,
+      visible: config?.google_sheets_enabled === true
+    },
+    { href: '/settings', label: 'Settings', icon: SettingsIcon, visible: true },
+  ]
+
+  // Filter to only visible items
+  const visibleNav = NAV.filter(item => item.visible)
 
   return (
     <nav className="flex flex-col gap-1 px-3 text-sm">
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {visibleNav.map(({ href, label, icon: Icon }) => {
         const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
         return (
           <Link

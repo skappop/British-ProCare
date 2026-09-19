@@ -6,13 +6,27 @@ import { usePathname } from 'next/navigation'
 import { LogOut, Menu, X } from 'lucide-react'
 import SidebarNav from '@/components/SidebarNav'
 
+interface NavConfig {
+  features_enabled?: {
+    appointments?: boolean
+    recall?: boolean
+    inventory?: boolean
+    lab_cases?: boolean
+    staff?: boolean
+    reports?: boolean
+  }
+  google_sheets_enabled?: boolean
+}
+
 export default function AppShell({
   userEmail,
   signOutAction,
+  config,
   children,
 }: {
   userEmail: string
   signOutAction: () => Promise<void>
+  config?: NavConfig | null
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
@@ -92,7 +106,7 @@ export default function AppShell({
         <div className="gold-hairline mx-6 mb-4" />
 
         <div className="flex-1 overflow-y-auto">
-          <SidebarNav />
+          <SidebarNav config={config} />
         </div>
 
         <div className="px-6 pb-6">

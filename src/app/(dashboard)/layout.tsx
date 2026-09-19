@@ -12,10 +12,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!user) redirect('/login')
 
+  // Fetch clinic configuration for dynamic navigation
+  const { data: config } = await supabase
+    .from('clinic_configuration')
+    .select('features_enabled, google_sheets_enabled')
+    .single()
+
   return (
     <>
       <SplashScreen />
-      <AppShell userEmail={user.email || ''} signOutAction={signOut}>
+      <AppShell userEmail={user.email || ''} signOutAction={signOut} config={config}>
         {children}
       </AppShell>
     </>
