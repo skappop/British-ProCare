@@ -63,7 +63,18 @@ export default function SettingsClient({ config, userEmail }: SettingsClientProp
 
         <CalibrationWizard
           onComplete={handleCalibrationComplete}
-          initialData={config || undefined}
+          initialData={config ? {
+            practice_type: config.practice_type as any,
+            patient_intake_method: config.patient_intake_method as any,
+            google_sheets_enabled: config.google_sheets_enabled,
+            google_sheets_url: config.google_sheets_url || '',
+            imaging_hardware: config.imaging_hardware as any,
+            osstem_enabled: config.osstem_enabled,
+            features_enabled: config.features_enabled,
+            staff_size: config.staff_size as any,
+            use_file_numbers: config.use_file_numbers,
+            default_appointment_duration: config.default_appointment_duration,
+          } : undefined}
         />
       </div>
     )
