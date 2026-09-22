@@ -965,9 +965,24 @@ class DentalAgentApp:
             }
 
         try:
-            detail = response.json().get("error", "")
+            payload = response.json()
         except Exception:
-            detail = ""
+            payload = {}
+
+        detail = payload.get("error", "")
+
+        # /register reports the real per-file cause under "details" - without it
+        # the dialog just says "no images could be registered", which says nothing.
+        rows = payload.get("details") or []
+        lines = [
+            f"\u2022 {row.get('file', '?')}: {row.get('error', '?')}"
+            for row in rows[:5]
+            if isinstance(row, dict)
+        ]
+        if len(rows) > 5:
+            lines.append(f"\u2022 \u2026and {len(rows) - 5} more")
+        if lines:
+            detail = (detail + "\n\n" if detail else "") + "\n".join(lines)
 
         if not detail:
             detail = (response.text or "")[:200] or f"HTTP {response.status_code}"

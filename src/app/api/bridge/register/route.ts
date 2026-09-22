@@ -95,6 +95,10 @@ export async function POST(request: Request) {
         .single()
 
       if (dbError) {
+        // Surface it in the Vercel function logs too - a schema mismatch here
+        // fails every row identically and is invisible from the clinic laptop.
+        console.error('image_records insert failed:', dbError.message, dbError.details ?? '')
+
         // The object is already in storage but has no record, so drop it rather
         // than leave an orphan nothing will ever show or clean up.
         await admin.storage.from(BUCKET).remove([path])
