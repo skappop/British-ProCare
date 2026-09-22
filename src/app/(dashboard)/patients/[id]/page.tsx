@@ -8,6 +8,7 @@ import Odontogram from './Odontogram'
 import PatientReportButton from '@/components/PatientReportButton'
 import ActivePatientSync from '@/components/ActivePatientSync'
 import LiveRefresh from '@/components/LiveRefresh'
+import OpenInAgentButton from '@/components/OpenInAgentButton'
 import { Wallet } from 'lucide-react'
 import TreatmentPlanPanel from './TreatmentPlanPanel'
 import PatientLabCases from './PatientLabCases'
@@ -139,7 +140,10 @@ export default async function PatientProfilePage({
         {/* Opening the patient is enough to arm hardware capture — no need to
             go via the gallery first. */}
         <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
-          <ActivePatientSync patientId={id} variant="dark" />
+          <div className="flex items-center gap-3">
+            <ActivePatientSync patientId={id} variant="dark" />
+            <OpenInAgentButton patientId={id} />
+          </div>
           <LiveRefresh tables={['visits', 'payments', 'image_records']} label="Live" />
         </div>
       </div>

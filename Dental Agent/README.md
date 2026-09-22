@@ -566,3 +566,26 @@ For first-time setup:
 ---
 
 *British ProCare Dental Clinics - Streamlined Clinical Imaging*
+
+
+## Opening the agent from the web app
+
+A patient's page in the web app has an **Open in Dental Agent** button. It
+launches this agent with that patient selected, or brings it forward if it is
+already running — it never opens a second window.
+
+Run this once per Windows user, on each PC that has the agent:
+
+```
+python install_protocol.py
+```
+
+That registers the `procare://` link handler under HKEY_CURRENT_USER, so it
+needs no administrator rights. To remove it: `python install_protocol.py
+--uninstall`.
+
+The first time the button is used, the browser asks permission to open the
+agent — tick "always allow" so it stops asking.
+
+If the button appears to do nothing, the handler is not registered on that PC;
+run the command above. The agent still works normally without it.

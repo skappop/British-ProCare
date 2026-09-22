@@ -3,6 +3,7 @@ from tkinter import ttk, filedialog, messagebox
 import json
 import mimetypes
 import os
+import socket
 import time
 import subprocess
 import requests
@@ -13,9 +14,51 @@ from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 
 
+# The web app's "Open in Dental Agent" button links to procare://patient/<uuid>.
+# Windows hands that whole URL to this script as a command-line argument.
+PROTOCOL_PORT = 47281
+PATIENT_URL_RE = re.compile(r"patient/([0-9a-fA-F-]{36})")
+
+
+def patient_id_from_argv(argv) -> Optional[str]:
+    """The patient uuid out of a procare:// argument, if there is one."""
+    for arg in argv[1:]:
+        if arg.lower().startswith("procare:"):
+            match = PATIENT_URL_RE.search(arg)
+            if match:
+                return match.group(1)
+    return None
+
+
+def claim_single_instance(payload: Optional[str]):
+    """
+    First instance gets a listening socket back. If one is already running,
+    the payload is handed to it and None is returned so this process can exit
+    instead of opening a second window.
+
+    If the port is held by something that is not us, we start normally rather
+    than refusing to run.
+    """
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        server.bind(("127.0.0.1", PROTOCOL_PORT))
+        server.listen(5)
+        return server, False
+    except OSError:
+        server.close()
+
+    try:
+        with socket.create_connection(("127.0.0.1", PROTOCOL_PORT), timeout=3) as client:
+            client.sendall((payload or "focus").encode("utf-8"))
+        return None, True
+    except OSError:
+        return None, False
+
+
 class DentalAgentApp:
-    def __init__(self, root):
+    def __init__(self, root, instance_socket=None, initial_patient_id: Optional[str] = None):
         self.root = root
+        self.instance_socket = instance_socket
         self.root.title("Dental Agent - ProCare Clinic")
         self.root.geometry("750x650")
 
@@ -58,6 +101,14 @@ class DentalAgentApp:
         self._setup_ui()
         self._load_config()
         self._start_active_patient_polling()
+
+        # Opened from the web app's button: show that patient straight away
+        # rather than waiting up to two seconds for the next poll.
+        if initial_patient_id:
+            self.patient_id_var.set(initial_patient_id)
+
+        if self.instance_socket:
+            self._start_protocol_listener()
 
     def _setup_ui(self):
         # Create notebook for tabs
@@ -398,6 +449,47 @@ class DentalAgentApp:
             messagebox.showinfo("Success", "Configuration saved successfully")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save configuration: {e}")
+
+    def _start_protocol_listener(self):
+        """Watch for another launch of this app handing us a patient."""
+        thread = threading.Thread(target=self._listen_for_launches, daemon=True)
+        thread.start()
+
+    def _listen_for_launches(self):
+        """
+        Off the main thread. A second launch (the doctor clicking the button
+        again) connects here instead of opening another window.
+        """
+        while not self.stop_polling:
+            try:
+                connection, _ = self.instance_socket.accept()
+            except OSError:
+                return  # Socket closed on shutdown.
+
+            try:
+                with connection:
+                    payload = connection.recv(512).decode("utf-8", "replace")
+            except OSError:
+                continue
+
+            match = PATIENT_URL_RE.search(payload or "")
+            self.root.after(0, self._handle_launch, match.group(1) if match else None)
+
+    def _handle_launch(self, patient_id: Optional[str]):
+        """Bring this window to the doctor rather than opening a second one."""
+        if patient_id:
+            self.patient_id_var.set(patient_id)
+
+        try:
+            self.root.deiconify()
+            self.root.lift()
+            # Windows will not focus a background app on request alone; a brief
+            # topmost flip does it without leaving the window pinned.
+            self.root.attributes("-topmost", True)
+            self.root.after(400, lambda: self.root.attributes("-topmost", False))
+            self.root.focus_force()
+        except Exception:
+            pass
 
     def _start_active_patient_polling(self):
         """Start background thread to poll for active patient"""
@@ -1219,7 +1311,16 @@ class DentalAgentApp:
 
 
 if __name__ == "__main__":
+    requested_patient = patient_id_from_argv(sys.argv)
+    instance_socket, handed_off = claim_single_instance(
+        sys.argv[1] if len(sys.argv) > 1 else None
+    )
+
+    if handed_off:
+        # Already running: it has been told to come forward, so stop here.
+        sys.exit(0)
+
     root = tk.Tk()
-    app = DentalAgentApp(root)
+    app = DentalAgentApp(root, instance_socket, requested_patient)
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
