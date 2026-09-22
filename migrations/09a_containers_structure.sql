@@ -7,6 +7,19 @@
 --
 -- Run 09a for the tables. Run 09 only if you want that stock list too.
 -- Safe to re-run.
+--
+-- Wrapped in one transaction that grabs the referenced inventory tables up
+-- front. Creating the foreign keys below needs a lock on them, and taking it
+-- part-way through can deadlock against the running app reading the same
+-- tables. lock_timeout makes it give up in 15s instead of fighting; if that
+-- happens nothing is applied and you can simply run it again.
+
+begin;
+
+set local lock_timeout = '15s';
+
+-- Ordinary reads are unaffected; this only blocks schema changes and writes.
+lock table inventory, inventory_batches in share row exclusive mode;
 
 create table if not exists containers (
   id uuid primary key default gen_random_uuid(),
@@ -79,5 +92,7 @@ create policy "authenticated_full_access" on container_items
 drop policy if exists "authenticated_full_access" on rapid_scan_log;
 create policy "authenticated_full_access" on rapid_scan_log
   for all to authenticated using (true) with check (true);
+
+commit;
 
 notify pgrst, 'reload schema';
