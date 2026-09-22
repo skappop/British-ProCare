@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     // Verify patient exists
     const { data: patient, error: patientError } = await supabase
       .from('patients')
-      .select('id, name')
+      .select('id, full_name')
       .eq('id', patientId)
       .single()
 

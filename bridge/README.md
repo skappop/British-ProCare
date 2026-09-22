@@ -47,6 +47,12 @@ ALTER TABLE image_records
 ADD COLUMN category TEXT CHECK (category IN ('radiograph', 'intraoral', 'document')) DEFAULT 'intraoral';
 ```
 
+Then run `migrations/10_active_patient.sql` in the Supabase SQL Editor. The
+active patient is stored in that table, not in the API's memory — on Vercel
+each serverless instance has its own memory, so the web app's POST and the
+bridge's polling GET land on different instances and the bridge reads back
+nothing. Without this table the bridge will never see an active patient.
+
 ## Usage
 
 ### Development Mode
@@ -132,7 +138,15 @@ Osstem software usually saves files to locations like:
 5. **Active patient not set**:
    - Bridge will skip uploads if no active patient
    - Check logs: "No active patient - skipping [filename]"
-   - Solution: Open a patient's gallery page in the web app
+   - Solution: Open a patient's **gallery** page in the web app
+     (`/patients/<uuid>/gallery`). The patient profile page does not activate
+     anything — only the gallery page does.
+   - Check `migrations/10_active_patient.sql` has been run, and that
+     `SUPABASE_SERVICE_ROLE_KEY` is set in the Vercel project's environment
+     variables (the API needs it to read the slot for the bridge, which has no
+     Supabase session). Redeploy after adding it.
+   - Test directly:
+     `curl -H "Authorization: Bearer $BRIDGE_API_KEY" https://<your-app>/api/bridge/active-patient`
 
 ### Images uploading to wrong patient
 
