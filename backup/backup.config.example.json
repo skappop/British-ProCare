@@ -1,0 +1,7 @@
+{
+  "supabase_url": "https://YOUR-PROJECT.supabase.co",
+  "service_role_key": "PASTE_YOUR_SERVICE_ROLE_KEY_HERE",
+  "bucket": "patient-images",
+  "destination": "D:/ProCare-Backup",
+  "keep_snapshots": 30
+}

@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local backup: holds the service role key and patient data
+backup/backup.config.json
+backup/backup.log
+backup/ProCare-Backup/
+ProCare-Backup/
