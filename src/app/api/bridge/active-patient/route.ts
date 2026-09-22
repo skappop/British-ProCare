@@ -19,8 +19,28 @@ export async function GET(request: Request) {
     activePatientId = null
   }
 
+  // If there's an active patient, fetch their name
+  let patientName = null
+  if (activePatientId) {
+    try {
+      const supabase = await createClient()
+      const { data: patient } = await supabase
+        .from('patients')
+        .select('name')
+        .eq('id', activePatientId)
+        .single()
+
+      if (patient) {
+        patientName = patient.name
+      }
+    } catch (error) {
+      // Continue without name if query fails
+    }
+  }
+
   return NextResponse.json({
     patient_id: activePatientId,
+    patient_name: patientName,
     last_activity: lastActivity,
   })
 }

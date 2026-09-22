@@ -39,40 +39,70 @@ export async function POST(request: Request) {
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
+      console.error('Auth error:', authError)
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized', details: authError?.message },
         { status: 401 }
       )
     }
 
     const body = await request.json()
+    console.log('Received calibration data:', body)
 
-    // Update or insert configuration
-    const { data: config, error } = await supabase
+    // Check if a config row already exists
+    const { data: existingConfig } = await supabase
       .from('clinic_configuration')
-      .upsert({
-        ...body,
-        is_calibrated: true,
-        last_calibrated_at: new Date().toISOString(),
-        calibrated_by: user.id,
-        updated_at: new Date().toISOString(),
-      })
-      .select()
+      .select('id')
       .single()
+
+    let result
+    if (existingConfig) {
+      // Update existing row
+      console.log('Updating existing config:', existingConfig.id)
+      result = await supabase
+        .from('clinic_configuration')
+        .update({
+          ...body,
+          is_calibrated: true,
+          last_calibrated_at: new Date().toISOString(),
+          calibrated_by: user.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingConfig.id)
+        .select()
+        .single()
+    } else {
+      // Insert new row
+      console.log('Inserting new config')
+      result = await supabase
+        .from('clinic_configuration')
+        .insert({
+          ...body,
+          is_calibrated: true,
+          last_calibrated_at: new Date().toISOString(),
+          calibrated_by: user.id,
+        })
+        .select()
+        .single()
+    }
+
+    const { data: config, error } = result
 
     if (error) {
       console.error('Error saving configuration:', error)
+      console.error('Error details:', JSON.stringify(error, null, 2))
       return NextResponse.json(
-        { error: 'Failed to save configuration' },
+        { error: 'Failed to save configuration', details: error.message, code: error.code },
         { status: 500 }
       )
     }
 
+    console.log('Configuration saved successfully:', config)
     return NextResponse.json(config)
   } catch (error) {
     console.error('Unexpected error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     )
   }

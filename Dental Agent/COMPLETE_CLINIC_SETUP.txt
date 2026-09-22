@@ -1,0 +1,240 @@
+# COMPLETE CLINIC COMPUTER SETUP GUIDE
+# All steps in one place - execute in order
+
+================================================================================
+PART 1: SETUP (One-Time Only)
+================================================================================
+
+STEP 1: Create Working Folder
+------------------------------
+1. Open File Explorer
+2. Navigate to C:\
+3. Right-click → New → Folder → Name it "DentalAgent"
+4. Result: C:\DentalAgent folder exists
+
+STEP 2: Copy Files from External Hard Drive
+--------------------------------------------
+1. Connect external hard drive to clinic computer
+2. Copy these 5 files to C:\DentalAgent:
+   - dental_agent.py
+   - config.json
+   - requirements.txt
+   - DEPLOYMENT_CHECKLIST.txt
+   - CLINIC_SETUP_GUIDE.txt
+
+STEP 3: Install Python
+-----------------------
+1. On external hard drive, run: python-3.11.x-amd64.exe
+2. ⚠️ CHECK THE BOX: "Add Python to PATH" (on first screen)
+3. Click "Install Now"
+4. Wait 2-3 minutes
+5. Click "Close"
+
+STEP 4: Install Python Libraries
+---------------------------------
+1. Press Windows Key + R
+2. Type: cmd
+3. Press Enter (Command Prompt opens)
+4. Type: cd C:\DentalAgent
+5. Press Enter
+6. Type: pip install -r requirements.txt
+7. Press Enter
+8. Wait for installation (1-2 minutes)
+9. You should see "Successfully installed requests Pillow"
+
+STEP 5: Configure Server URL
+-----------------------------
+1. In C:\DentalAgent, right-click dental_agent.py
+2. Select "Edit with Notepad"
+3. Press Ctrl+F to open Find
+4. Search for: localhost:5000
+5. You'll find this line (around line 236):
+
+   response = requests.post(
+       "http://localhost:5000/api/upload",
+
+6. Change it to your actual server URL:
+
+   response = requests.post(
+       "https://YOUR-CLINIC-SERVER.com/api/upload",
+
+7. Replace YOUR-CLINIC-SERVER.com with your real Next.js server address
+8. Press Ctrl+S to save
+9. Close Notepad
+
+STEP 6: Configure One2 Paths Only
+----------------------------------
+1. In Command Prompt (if closed, open new one: Win+R → cmd)
+2. Type: cd C:\DentalAgent
+3. Press Enter
+4. Type: python dental_agent.py
+5. Press Enter
+6. Application window opens
+7. Click "Settings" tab
+
+8. Configure ONLY the One2 paths (leave EzDent-i empty for now):
+   a. Click "Browse" button next to "Locate One2 Executable"
+   b. Navigate to where One2 is installed (e.g., C:\OSSTEM\OneVision\One2\)
+   c. Select: oov.exe (or the actual One2 executable)
+   d. Click Open
+
+   e. Click "Browse" button next to "Locate One2 Image Export Folder"
+   f. Navigate to where One2 saves images (e.g., C:\OSSTEM\OneVision\One2\oov.acq\)
+   g. Select: acquired folder (or the actual export folder)
+   h. Click Select Folder
+
+   i. Leave "Locate EzDent-i Executable" EMPTY
+   j. Leave "Locate EzDent-i Image Export Folder" EMPTY
+
+   k. Click "Save Configuration"
+
+9. Status should show green: "Configuration saved successfully"
+
+Note: You can add EzDent-i (radiograph) paths later when needed
+
+================================================================================
+PART 2: DAILY USE
+================================================================================
+
+Starting the Agent
+------------------
+1. Press Windows Key + R
+2. Type: cmd
+3. Press Enter
+4. Type: cd C:\DentalAgent
+5. Press Enter
+6. Type: python dental_agent.py
+7. Press Enter
+8. Agent window opens
+
+Using with Each Patient
+-----------------------
+1. Click "Session" tab
+2. Enter Patient ID (e.g., P12345)
+3. Click "Start Session"
+   → One2 software launches automatically
+   → Patient ID field locks
+   → Status shows "Session Active"
+
+4. Use One2 normally to take intraoral photos
+   → Images save to the configured export folder
+
+5. When done with patient, click "End Session"
+   → Agent scans for new images (only from this session)
+   → Uploads images + Patient ID to your server
+   → Closes One2 software
+   → Shows success message with count
+
+6. Ready for next patient - enter new Patient ID and repeat
+
+Note: EzDent-i (radiograph) software will be added later when needed
+
+================================================================================
+PART 3: TROUBLESHOOTING
+================================================================================
+
+Problem: "Configuration Error - Please configure paths"
+-------------------------------------------------------
+Solution:
+- Go to Settings tab
+- Use Browse buttons to set One2 paths (EzDent-i is optional)
+- Click Save Configuration
+- You only need to configure the intraoral camera (One2) for now
+
+Problem: One2 doesn't launch when clicking Start Session
+---------------------------------------------------------
+Solution:
+- Check if One2 is already running (close it first)
+- Verify exe path in Settings: C:\OSSTEM\OneVision\One2\oov.exe
+- Try launching One2 manually to confirm it works
+
+Problem: "No new images found" after End Session
+-------------------------------------------------
+Solution:
+- Images must be taken AFTER clicking Start Session
+- Verify export folder path in Settings tab
+- Check that One2 is actually saving images to that folder
+- Try manually navigating to the export folder to confirm images exist
+
+Problem: Upload fails / Error uploading images
+-----------------------------------------------
+Solution:
+- Check internet connection
+- Verify server URL in dental_agent.py (see STEP 5)
+- Make sure your Next.js clinic server is running
+- Test server URL in browser first
+- Check with IT about firewall blocking
+
+Problem: "python is not recognized" error
+------------------------------------------
+Solution:
+- Python not installed correctly
+- Reinstall Python
+- MUST check "Add Python to PATH" during installation
+- Restart Command Prompt after installing
+
+Problem: Agent shows red/offline status
+----------------------------------------
+Solution:
+- Check Settings tab paths are correct
+- Make sure oov.exe file actually exists at that path
+- Make sure acquired folder actually exists at that path
+- Click "Save Configuration" after verifying
+
+================================================================================
+PART 4: QUICK REFERENCE
+================================================================================
+
+File Locations
+--------------
+Agent files: C:\DentalAgent\
+One2 software: (configured in Settings - varies by installation)
+One2 images: (configured in Settings - varies by installation)
+Config file: C:\DentalAgent\config.json
+
+What Gets Uploaded
+------------------
+- Only images created AFTER "Start Session" clicked
+- All images from that session grouped together
+- Patient ID sent with the images
+- Upload format: multipart/form-data POST request
+- Currently: One2 intraoral photos only (EzDent-i to be added later)
+
+Server Endpoint
+---------------
+Your Next.js server must have endpoint: POST /api/upload
+Receives:
+- patient_id (form field)
+- Multiple files (intraoral images)
+
+Closing the Agent
+-----------------
+- If session is active, End Session first
+- Then close the window
+- Or just close Command Prompt
+
+Backup
+------
+- Keep external hard drive as backup
+- config.json stores your settings
+- Can copy entire C:\DentalAgent folder to USB for portability
+
+================================================================================
+TESTING CHECKLIST
+================================================================================
+
+Before Using with Real Patients:
+[ ] Python installed with PATH
+[ ] Libraries installed (requests, Pillow)
+[ ] Server URL updated in dental_agent.py
+[ ] One2 paths verified in Settings
+[ ] Test with Patient ID: TEST001
+[ ] Confirm One2 launches
+[ ] Take 1-2 test images
+[ ] Confirm images upload successfully
+[ ] Check your Next.js server received the files
+[ ] Verify Patient ID matches in server
+
+If all tests pass → Ready for production use!
+
+================================================================================

@@ -1,0 +1,126 @@
+# CLINIC COMPUTER SETUP GUIDE
+# Quick reference for setting up the Dental Agent on clinic computer
+
+## What This Agent Does
+- Launches One2 intraoral camera software
+- Monitors the export folder for new images
+- Groups all images from a patient session
+- Uploads them to your clinic's web system with the Patient ID
+
+## Installation (One-Time Setup)
+
+### 1. Install Python
+- Run the Python installer from your hard drive
+- ⚠️ CHECK THE BOX: "Add Python to PATH"
+- Click "Install Now"
+
+### 2. Copy Files
+Create folder: C:\DentalAgent
+Copy these files into it:
+- dental_agent.py
+- config.json
+- requirements.txt
+
+### 3. Install Libraries
+Open Command Prompt:
+```
+cd C:\DentalAgent
+pip install -r requirements.txt
+```
+
+### 4. Configure Upload URL
+Open dental_agent.py in Notepad.
+Find this line (around line 236):
+```python
+response = requests.post(
+    "http://localhost:5000/api/upload",
+```
+
+Change to your real server:
+```python
+response = requests.post(
+    "https://YOUR-CLINIC-SERVER.com/api/upload",
+```
+
+Save and close.
+
+## Daily Use
+
+### Starting the Agent
+1. Open Command Prompt
+2. Type: cd C:\DentalAgent
+3. Type: python dental_agent.py
+4. Press Enter
+
+### Using with Patients
+
+**Before Each Patient:**
+1. Enter Patient ID in the Session tab
+2. Click "Start Session"
+3. One2 software will launch automatically
+
+**During Appointment:**
+- Take photos as normal using One2
+- Images save to: C:\OSSTEM\OneVision\One2\oov.acq\acquired
+
+**After Appointment:**
+1. Click "End Session" in the agent
+2. Agent will:
+   - Scan for new images (only from this session)
+   - Upload to your clinic server
+   - Close One2 software
+3. Success message confirms upload
+
+### What Gets Uploaded
+- Only images created AFTER you clicked "Start Session"
+- All images from that time period are grouped together
+- Patient ID is included with the upload
+
+## Troubleshooting
+
+### "Configuration Error" message
+- Go to Settings tab
+- Click Browse buttons to select:
+  - One2 exe: C:\OSSTEM\OneVision\One2\oov.exe
+  - One2 export: C:\OSSTEM\OneVision\One2\oov.acq\acquired
+- Click "Save Configuration"
+
+### One2 doesn't launch
+- Check if One2 is already running (close it first)
+- Verify the exe path in Settings tab
+- Try launching One2 manually to test if it works
+
+### "No new images found"
+- Make sure you took photos AFTER clicking Start Session
+- Check that One2 is saving to the correct export folder
+- Verify the export folder path in Settings tab
+
+### Upload fails
+- Check your internet connection
+- Verify the server URL in dental_agent.py
+- Make sure your clinic's web server is running
+- Check with IT if firewall is blocking
+
+### Python not found
+- Reinstall Python
+- Make sure "Add Python to PATH" was checked
+- Restart Command Prompt after installing
+
+## File Locations
+
+**Agent files:** C:\DentalAgent\
+**One2 software:** C:\OSSTEM\OneVision\One2\
+**Images export to:** C:\OSSTEM\OneVision\One2\oov.acq\acquired\
+**Configuration saved in:** C:\DentalAgent\config.json
+
+## Support Notes
+
+The agent creates a config.json file that stores your settings.
+If you move the agent to a different folder or USB drive, it will work from there.
+No hardcoded paths - fully portable.
+
+For issues, check:
+1. Python is installed (type: python --version)
+2. Libraries are installed (check requirements.txt)
+3. One2 paths are correct in Settings
+4. Server URL is correct in dental_agent.py
