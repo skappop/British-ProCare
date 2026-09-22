@@ -5,6 +5,7 @@ import {
   bridgeAuthError,
   determineCategory,
   extensionOf,
+  imageTypeFor,
   missingServiceRole,
   noStore,
   pathBelongsToPatient,
@@ -79,7 +80,7 @@ export async function POST(request: Request) {
         .from('image_records')
         .insert({
           patient_id: patientId,
-          image_type: category,
+          image_type: imageTypeFor(filename),
           storage_path: path,
           is_baseline: sharedMetadata.is_baseline === true,
           category,

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { determineCategory } from '@/lib/bridge'
+import { determineCategory, imageTypeFor } from '@/lib/bridge'
 
 // Server-side Supabase client with service role for uploads
 const supabase = createClient(
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
         // Create database record with source tracking
         const insertData: any = {
           patient_id: patientId,
-          image_type: category,
+          image_type: imageTypeFor(file.name),
           storage_path: path,
           is_baseline: sharedMetadata.is_baseline || false,
           category,

@@ -163,7 +163,9 @@ function detectImageType(filePath) {
 
     if (fileName.includes('pano')) return 'panoramic'
     if (fileName.includes('ceph')) return 'cephalometric'
-    return 'xray'
+    // 'xray' is not a member of the image_type enum; the server records the
+    // radiograph/intraoral distinction in `category` instead.
+    return 'other'
   }
 
   // Check for intraoral camera patterns

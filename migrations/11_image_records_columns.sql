@@ -20,8 +20,8 @@ alter table image_records add column if not exists uploaded_at  timestamptz not 
 -- Categorise anything that predates the column, then constrain it.
 update image_records
 set category = case
-  when image_type in ('panoramic', 'cephalometric', 'xray', 'radiograph') then 'radiograph'
-  when image_type = 'document' then 'document'
+  when image_type::text in ('panoramic', 'cephalometric', 'xray', 'radiograph') then 'radiograph'
+  when image_type::text = 'document' then 'document'
   else 'intraoral'
 end
 where category is null;

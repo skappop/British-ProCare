@@ -61,6 +61,45 @@ export function pathBelongsToPatient(path: string, patientId: string): boolean {
   return typeof path === 'string' && path.startsWith(`${patientId}/`) && !path.includes('..')
 }
 
+/**
+ * Members of the image_type Postgres enum, mirroring the picker in the gallery
+ * upload form. image_type is the specific *view*; `category` is the coarse
+ * grouping the gallery sorts on. Writing anything outside this list makes
+ * Postgres reject the whole insert, which is not obvious from the failure.
+ */
+export const IMAGE_TYPES = [
+  'intraoral_front',
+  'intraoral_left',
+  'intraoral_right',
+  'occlusal_upper',
+  'occlusal_lower',
+  'panoramic',
+  'cephalometric',
+  'extraoral',
+  'other',
+] as const
+
+export type ImageType = (typeof IMAGE_TYPES)[number]
+
+/** Best-effort view from the filename, always a valid enum member. */
+export function imageTypeFor(filename: string): ImageType {
+  const lower = filename.toLowerCase()
+
+  if (lower.includes('pano') || lower.includes('opg')) return 'panoramic'
+  if (lower.includes('ceph')) return 'cephalometric'
+
+  if (lower.includes('front')) return 'intraoral_front'
+  if (lower.includes('left')) return 'intraoral_left'
+  if (lower.includes('right')) return 'intraoral_right'
+  if (lower.includes('upper') || lower.includes('maxilla')) return 'occlusal_upper'
+  if (lower.includes('lower') || lower.includes('mandib')) return 'occlusal_lower'
+
+  // A hardware capture rarely says which view it is. Guessing a specific one
+  // would be wrong more often than not, and `category` already records whether
+  // it is a radiograph or an intraoral photo.
+  return 'other'
+}
+
 export function determineCategory(
   imageType: string | null,
   filename: string,
