@@ -21,20 +21,34 @@ HERE = Path(__file__).resolve().parent
 PROTOCOL_PORT = 47281
 
 
+def say(text=""):
+    print(text, flush=True)
+
+
 def section(title):
-    print(f"\n--- {title} " + "-" * max(0, 46 - len(title)))
+    say(f"\n--- {title} " + "-" * max(0, 46 - len(title)))
 
 
 def ok(text):
-    print(f"  [ok]   {text}")
+    say(f"  [ok]   {text}")
 
 
 def bad(text):
-    print(f"  [BAD]  {text}")
+    say(f"  [BAD]  {text}")
 
 
 def info(text):
-    print(f"         {text}")
+    say(f"         {text}")
+
+
+def is_elevated() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
 
 
 def check_python():
@@ -71,7 +85,7 @@ def check_files():
 
     # Is this the current version, or an old copy?
     try:
-        with urllib.request.urlopen(f"{RAW}/dental_agent_v2.py", timeout=30) as response:
+        with urllib.request.urlopen(f"{RAW}/dental_agent_v2.py", timeout=15) as response:
             latest = response.read()
     except (urllib.error.URLError, OSError) as exc:
         info(f"could not check GitHub for a newer version: {exc}")
@@ -178,7 +192,7 @@ def check_config():
                 f"{url.rstrip('/')}/api/bridge/active-patient",
                 headers={"Authorization": f"Bearer {key}"},
             )
-            with urllib.request.urlopen(request, timeout=20) as response:
+            with urllib.request.urlopen(request, timeout=10) as response:
                 payload = json.loads(response.read().decode())
             ok(f"server reachable — active patient: {payload.get('patient_name') or 'none set'}")
         except urllib.error.HTTPError as exc:
@@ -188,14 +202,21 @@ def check_config():
 
 
 def main():
-    print("ProCare Dental Agent — setup check")
-    print(f"Windows user: {os.environ.get('USERNAME', 'unknown')}")
+    say("ProCare Dental Agent - setup check")
+    say(f"Windows user: {os.environ.get('USERNAME', 'unknown')}")
+
+    if is_elevated():
+        say()
+        bad("This window is running as Administrator.")
+        info("The procare:// handler is registered per Windows user, so setting")
+        info("it up from an elevated window can register it for the wrong one.")
+        info("Close this and use an ordinary Command Prompt.")
     check_python()
     check_files()
     check_config()
     check_protocol()
     check_running()
-    print("\nDone. Copy everything above when reporting a problem.")
+    say("\nDone. Copy everything above when reporting a problem.")
     return 0
 
 
