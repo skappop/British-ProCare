@@ -190,13 +190,25 @@ export async function sendPatientToClinic(
     .single()
 
   if (error) {
-    return {
-      ok: false,
-      message:
-        error.message.includes('clinic_id')
-          ? 'Clinics are not set up yet — run migration 13_clinics_and_realtime.sql'
-          : error.message,
+    // Point at the migration that is actually missing rather than echoing a
+    // Postgres message nobody at a reception desk can act on.
+    const detail = error.message.toLowerCase()
+
+    let message = error.message
+    if (detail.includes('clinic_id') || detail.includes('clinics')) {
+      message =
+        'Clinics are not set up yet — run migration 13_clinics_and_realtime.sql in Supabase.'
+    } else if (
+      detail.includes('arrived_at') ||
+      detail.includes('seated_at') ||
+      detail.includes('appointments_status_check')
+    ) {
+      message =
+        'Check-in is not set up yet — run migration 07_appointments_workflow.sql in Supabase. ' +
+        'It adds the arrived/in-chair steps this uses.'
     }
+
+    return { ok: false, message }
   }
 
   revalidatePath('/appointments')
