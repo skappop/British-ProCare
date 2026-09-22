@@ -8,6 +8,7 @@ import Odontogram from './Odontogram'
 import PatientReportButton from '@/components/PatientReportButton'
 import ActivePatientSync from '@/components/ActivePatientSync'
 import LiveRefresh from '@/components/LiveRefresh'
+import { Wallet } from 'lucide-react'
 import TreatmentPlanPanel from './TreatmentPlanPanel'
 import PatientLabCases from './PatientLabCases'
 import { isOwner } from '@/lib/auth/role'
@@ -103,6 +104,17 @@ export default async function PatientProfilePage({
           )}
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 items-center">
+          {canSeeFinancials && (
+            <a
+              href="#ledger"
+              className="inline-flex items-center gap-1.5 rounded-control bg-gold/20 hover:bg-gold/30 text-gold-light px-3 py-1.5 text-sm font-medium transition-colors"
+            >
+              <Wallet size={15} />
+              {ledger && ledger.balance > 0
+                ? `Take payment · EGP ${ledger.balance.toLocaleString()} due`
+                : 'Payments'}
+            </a>
+          )}
           <Link
             href={`/patients/${id}/gallery`}
             className="text-sm text-gold-light hover:underline"

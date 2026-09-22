@@ -42,7 +42,10 @@ export default function ReceptionFlow({
   const [payment, setPayment] = useState<PaymentSummary | null>(null)
   const [sentTo, setSentTo] = useState<string | null>(null)
 
-  const currentIndex = STEPS.findIndex((s) => s.key === step)
+  const alreadyRouted = !!initialAppointmentId
+
+  const visibleSteps = alreadyRouted ? STEPS.filter((s) => s.key !== 'send') : STEPS
+  const currentIndex = visibleSteps.findIndex((s) => s.key === step)
 
   function reset() {
     setPatient(null)
@@ -86,7 +89,7 @@ export default function ReceptionFlow({
 
       {/* Progress rail */}
       <ol className="flex items-center gap-2 mb-6">
-        {STEPS.map((s, i) => {
+        {visibleSteps.map((s, i) => {
           const done = i < currentIndex
           const active = i === currentIndex
           return (
@@ -111,7 +114,7 @@ export default function ReceptionFlow({
                   {s.label}
                 </span>
               </div>
-              {i < STEPS.length - 1 && (
+              {i < visibleSteps.length - 1 && (
                 <div className={`h-px mt-2 mr-1 ${done ? 'bg-gold-deep/40' : 'bg-ink/10'}`} />
               )}
             </li>
@@ -154,7 +157,7 @@ export default function ReceptionFlow({
           onBack={() => setStep('identify')}
           onDone={(a) => {
             setAlerts(a)
-            setStep('send')
+            setStep(alreadyRouted ? 'visit' : 'send')
           }}
         />
       )}
@@ -203,7 +206,7 @@ export default function ReceptionFlow({
         <StepVisit
           patient={patient}
           procedures={procedures}
-          onBack={() => setStep('send')}
+          onBack={() => setStep(alreadyRouted ? 'safety' : 'send')}
           onSaved={handleVisitSaved}
         />
       )}

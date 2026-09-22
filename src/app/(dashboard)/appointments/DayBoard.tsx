@@ -120,9 +120,6 @@ function Card({
             <ActionBtn onClick={() => onStatus(appt.id, 'no_show')} disabled={pending} tone="muted">
               No-show
             </ActionBtn>
-            <IconBtn onClick={() => onRemove(appt.id)} disabled={pending} title="Cancel & remove">
-              <X size={13} />
-            </IconBtn>
           </>
         )}
         {appt.status === 'arrived' && (
@@ -142,6 +139,15 @@ function Card({
               <CheckCircle2 size={12} /> Complete
             </ActionBtn>
           </>
+        )}
+        {(appt.status === 'scheduled' || appt.status === 'arrived' || appt.status === 'in_chair') && (
+          <IconBtn
+            onClick={() => onRemove(appt.id)}
+            disabled={pending}
+            title="Remove from the board (keeps the patient's record)"
+          >
+            <X size={13} />
+          </IconBtn>
         )}
         {appt.status === 'completed' && (
           <>
@@ -263,7 +269,16 @@ export default function DayBoard({ appointments }: { appointments: BoardAppointm
     })
   }
   function remove(id: string) {
-    if (!confirm('Remove this appointment?')) return
+    const appt = appointments.find((a) => a.id === id)
+    const name = appt?.patients?.full_name || 'this patient'
+    if (
+      !confirm(
+        `Remove ${name} from today's board?\n\n` +
+          "Their patient record, history and images are not affected \u2014 " +
+          'this only takes them off the list.'
+      )
+    )
+      return
     startTransition(async () => {
       await deleteAppointment(id)
       router.refresh()
