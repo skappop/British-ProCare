@@ -3,6 +3,9 @@ import Link from 'next/link'
 import BookingForm from './BookingForm'
 import AppointmentList from './AppointmentList'
 import DayBoard, { type BoardAppointment } from './DayBoard'
+import ClinicSwitcher from '@/components/ClinicSwitcher'
+import LiveRefresh from '@/components/LiveRefresh'
+import { getClinics } from '@/lib/clinics'
 
 function startOfDay(d: Date) {
   const x = new Date(d)
@@ -27,25 +30,41 @@ function toDateStr(d: Date) {
 export default async function AppointmentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; date?: string }>
+  searchParams: Promise<{ view?: string; date?: string; clinic?: string }>
 }) {
-  const { view: viewParam, date: dateParam } = await searchParams
+  const { view: viewParam, date: dateParam, clinic: clinicParam } = await searchParams
   const view = viewParam === 'week' ? 'week' : 'day'
   const anchor = dateParam ? new Date(`${dateParam}T00:00:00`) : new Date()
 
   const supabase = await createClient()
+  const clinics = await getClinics()
+
+  // An unknown id would silently show nothing, so fall back to all.
+  const activeClinic = clinics.some((c) => c.id === clinicParam) ? clinicParam! : 'all'
 
   const rangeStart = view === 'week' ? startOfWeek(anchor) : startOfDay(anchor)
   const rangeEnd = view === 'week' ? addDays(rangeStart, 7) : addDays(rangeStart, 1)
 
-  const { data: appointments } = await supabase
-    .from('appointments')
-    .select(
-      'id, scheduled_at, duration_minutes, status, notes, arrived_at, seated_at, patients(id, full_name, phone, is_ortho)'
-    )
-    .gte('scheduled_at', rangeStart.toISOString())
-    .lt('scheduled_at', rangeEnd.toISOString())
-    .order('scheduled_at', { ascending: true })
+  const BASE_COLUMNS =
+    'id, scheduled_at, duration_minutes, status, notes, arrived_at, seated_at, patients(id, full_name, phone, is_ortho)'
+
+  async function fetchAppointments(withClinic: boolean) {
+    let query = supabase
+      .from('appointments')
+      .select(withClinic ? `${BASE_COLUMNS}, clinic_id` : BASE_COLUMNS)
+      .gte('scheduled_at', rangeStart.toISOString())
+      .lt('scheduled_at', rangeEnd.toISOString())
+
+    if (withClinic && activeClinic !== 'all') query = query.eq('clinic_id', activeClinic)
+
+    return query.order('scheduled_at', { ascending: true })
+  }
+
+  // Until migration 13 is run there is no clinic_id column, and asking for it
+  // would fail the whole query and blank the board. Fall back to the un-tagged
+  // shape rather than showing an empty day.
+  const first = await fetchAppointments(clinics.length > 0)
+  const appointments = first.error ? (await fetchAppointments(false)).data : first.data
 
   const list = (appointments as any[]) || []
   const dayAppts: BoardAppointment[] = list.map((a) => ({
@@ -56,6 +75,10 @@ export default async function AppointmentsPage({
     notes: a.notes,
     arrived_at: a.arrived_at,
     seated_at: a.seated_at,
+    clinic_id: a.clinic_id ?? null,
+    clinic_name: clinics.find((c) => c.id === a.clinic_id)?.short_name
+      ?? clinics.find((c) => c.id === a.clinic_id)?.name
+      ?? null,
     patients: a.patients
       ? {
           id: a.patients.id,
@@ -76,6 +99,7 @@ export default async function AppointmentsPage({
 
   const prevDate = toDateStr(addDays(anchor, view === 'week' ? -7 : -1))
   const nextDate = toDateStr(addDays(anchor, view === 'week' ? 7 : 1))
+  const clinicQs = activeClinic === 'all' ? '' : `&clinic=${activeClinic}`
   const todayStr = toDateStr(new Date())
   const isToday = toDateStr(anchor) === todayStr
 
@@ -84,17 +108,22 @@ export default async function AppointmentsPage({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs tracking-[0.25em] uppercase text-gold-deep font-mono">Schedule</p>
-          <h1 className="font-display text-2xl text-ink-strong mt-1">Appointments</h1>
+          <div className="flex items-center gap-3 mt-1">
+            <h1 className="font-display text-2xl text-ink-strong">Appointments</h1>
+            <LiveRefresh tables={['appointments', 'visits', 'payments']} />
+          </div>
         </div>
+        <ClinicSwitcher clinics={clinics} active={activeClinic} />
+        <div className="hidden" />
         <div className="flex rounded-control border border-ink/15 overflow-hidden">
           <Link
-            href={`/appointments?view=day&date=${dateParam || todayStr}`}
+            href={`/appointments?view=day&date=${dateParam || todayStr}${clinicQs}`}
             className={`px-3 py-1.5 text-xs ${view === 'day' ? 'bg-teal text-white' : 'bg-white text-ink/60 hover:bg-marble/60'}`}
           >
             Day tracker
           </Link>
           <Link
-            href={`/appointments?view=week&date=${dateParam || todayStr}`}
+            href={`/appointments?view=week&date=${dateParam || todayStr}${clinicQs}`}
             className={`px-3 py-1.5 text-xs ${view === 'week' ? 'bg-teal text-white' : 'bg-white text-ink/60 hover:bg-marble/60'}`}
           >
             Week
@@ -105,19 +134,19 @@ export default async function AppointmentsPage({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Link
-            href={`/appointments?view=${view}&date=${prevDate}`}
+            href={`/appointments?view=${view}&date=${prevDate}${clinicQs}`}
             className="px-3 py-1.5 rounded-control border border-ink/15 text-xs text-ink/60 hover:bg-marble/60"
           >
             ← Prev
           </Link>
           <Link
-            href={`/appointments?view=${view}&date=${todayStr}`}
+            href={`/appointments?view=${view}&date=${todayStr}${clinicQs}`}
             className="px-3 py-1.5 rounded-control border border-gold/40 text-xs text-gold-deep hover:bg-gold/10"
           >
             Today
           </Link>
           <Link
-            href={`/appointments?view=${view}&date=${nextDate}`}
+            href={`/appointments?view=${view}&date=${nextDate}${clinicQs}`}
             className="px-3 py-1.5 rounded-control border border-ink/15 text-xs text-ink/60 hover:bg-marble/60"
           >
             Next →

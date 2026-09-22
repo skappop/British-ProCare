@@ -156,3 +156,66 @@ export async function linkAppointmentToVisit(
   revalidatePath('/recall')
   return { ok: true }
 }
+
+/**
+ * Hands a patient over to a clinic's day board.
+ *
+ * Creates the appointment already checked in, so the doctor sees them in the
+ * Waiting lane the moment reception sends them — no booking step, no refresh.
+ */
+export async function sendPatientToClinic(
+  patientId: string,
+  clinicId: string,
+  notes?: string
+): Promise<{ ok: boolean; message?: string; appointmentId?: string }> {
+  const supabase = await createClient()
+
+  if (!patientId) return { ok: false, message: 'No patient selected' }
+  if (!clinicId) return { ok: false, message: 'Choose a clinic to send the patient to' }
+
+  const now = new Date().toISOString()
+
+  const { data, error } = await supabase
+    .from('appointments')
+    .insert({
+      patient_id: patientId,
+      clinic_id: clinicId,
+      scheduled_at: now,
+      arrived_at: now,
+      status: 'arrived',
+      duration_minutes: 30,
+      notes: notes?.trim() || null,
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    return {
+      ok: false,
+      message:
+        error.message.includes('clinic_id')
+          ? 'Clinics are not set up yet — run migration 13_clinics_and_realtime.sql'
+          : error.message,
+    }
+  }
+
+  revalidatePath('/appointments')
+  revalidatePath('/reception')
+
+  return { ok: true, appointmentId: data.id }
+}
+
+/** Clinics available to send a patient to. */
+export async function getClinicOptions(): Promise<
+  { id: string; name: string; short_name: string | null }[]
+> {
+  const supabase = await createClient()
+
+  const { data } = await supabase
+    .from('clinics')
+    .select('id, name, short_name')
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+
+  return data ?? []
+}

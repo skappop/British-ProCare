@@ -7,6 +7,7 @@ import { getPatientLedger } from './actions'
 import Odontogram from './Odontogram'
 import PatientReportButton from '@/components/PatientReportButton'
 import ActivePatientSync from '@/components/ActivePatientSync'
+import LiveRefresh from '@/components/LiveRefresh'
 import TreatmentPlanPanel from './TreatmentPlanPanel'
 import PatientLabCases from './PatientLabCases'
 import { isOwner } from '@/lib/auth/role'
@@ -125,8 +126,9 @@ export default async function PatientProfilePage({
 
         {/* Opening the patient is enough to arm hardware capture — no need to
             go via the gallery first. */}
-        <div className="mt-4 pt-3 border-t border-white/10">
+        <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
           <ActivePatientSync patientId={id} variant="dark" />
+          <LiveRefresh tables={['visits', 'payments', 'image_records']} label="Live" />
         </div>
       </div>
 
@@ -149,7 +151,7 @@ export default async function PatientProfilePage({
 
       {patient.is_ortho && (
         <TreatmentPlanPanel
-          patientId={id}
+            patientId={id}
           initialPlan={plan || null}
           initialPhases={phases}
           unassignedVisits={unassignedVisits}
@@ -215,14 +217,16 @@ export default async function PatientProfilePage({
       </div>
 
       {canSeeFinancials && ledger && (
-        <PaymentLedger
-          patientId={id}
-          totalCharged={ledger.totalCharged}
-          totalPaid={ledger.totalPaid}
-          balance={ledger.balance}
-          payments={ledger.payments}
-          visitOptions={visitOptions}
-        />
+        <div id="ledger" className="scroll-mt-6 space-y-6">
+          <PaymentLedger
+            patientId={id}
+            totalCharged={ledger.totalCharged}
+            totalPaid={ledger.totalPaid}
+            balance={ledger.balance}
+            payments={ledger.payments}
+            visitOptions={visitOptions}
+          />
+        </div>
       )}
     </div>
   )

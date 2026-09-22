@@ -57,9 +57,13 @@ export type SafetyAlerts = {
   pregnant?: boolean
 }
 
+// The default path is Patient -> History -> Send: reception hands the patient
+// to a clinic and the doctor takes it from there. Treatment and Payment remain
+// reachable from the Send step for anyone who wants to finish it at the desk.
 export const STEPS = [
   { key: 'identify', label: 'Patient', hint: 'Who walked in' },
   { key: 'safety', label: 'History', hint: 'Allergies & consent' },
+  { key: 'send', label: 'Send', hint: 'To a clinic' },
   { key: 'visit', label: 'Treatment', hint: "Today's work" },
   { key: 'payment', label: 'Payment', hint: 'Collect & receipt' },
   { key: 'done', label: 'Done', hint: 'Wrap up' },

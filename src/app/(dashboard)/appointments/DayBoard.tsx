@@ -13,6 +13,7 @@ import {
   Undo2,
   X,
   CalendarClock,
+  Wallet,
 } from 'lucide-react'
 import { updateAppointmentStatus, deleteAppointment } from './actions'
 
@@ -24,6 +25,8 @@ export type BoardAppointment = {
   notes: string | null
   arrived_at: string | null
   seated_at: string | null
+  clinic_id?: string | null
+  clinic_name?: string | null
   patients: { id: string; full_name: string; phone: string | null; is_ortho: boolean } | null
 }
 
@@ -72,6 +75,11 @@ function Card({
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="font-mono text-xs text-ink/50">{hhmm(appt.scheduled_at)}</span>
+            {appt.clinic_name && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal/10 text-teal-deep font-medium">
+                {appt.clinic_name}
+              </span>
+            )}
             {appt.patients?.is_ortho && <span className="text-[10px] text-gold-deep">· Ortho</span>}
           </div>
           {appt.patients ? (
@@ -137,6 +145,14 @@ function Card({
         )}
         {appt.status === 'completed' && (
           <>
+            {appt.patients && (
+              <Link
+                href={`/patients/${appt.patients.id}#ledger`}
+                className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-control bg-gold/12 text-gold-deep hover:bg-gold/20 font-medium transition-colors"
+              >
+                <Wallet size={12} /> Take payment
+              </Link>
+            )}
             {appt.patients && (
               <Link
                 href={`/patients/${appt.patients.id}`}

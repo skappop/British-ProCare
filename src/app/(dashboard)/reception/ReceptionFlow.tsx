@@ -14,7 +14,9 @@ import type {
 import { STEPS } from './types'
 import { linkAppointmentToVisit } from './receptionActions'
 import StepIdentify from './steps/StepIdentify'
+import Link from 'next/link'
 import StepSafety from './steps/StepSafety'
+import StepSendToClinic from './steps/StepSendToClinic'
 import StepVisit from './steps/StepVisit'
 import StepPayment from './steps/StepPayment'
 import StepDone from './steps/StepDone'
@@ -38,6 +40,7 @@ export default function ReceptionFlow({
   const [visit, setVisit] = useState<SavedVisit | null>(null)
   const [nextVisitWeeks, setNextVisitWeeks] = useState<number | null>(null)
   const [payment, setPayment] = useState<PaymentSummary | null>(null)
+  const [sentTo, setSentTo] = useState<string | null>(null)
 
   const currentIndex = STEPS.findIndex((s) => s.key === step)
 
@@ -48,6 +51,7 @@ export default function ReceptionFlow({
     setVisit(null)
     setNextVisitWeeks(null)
     setPayment(null)
+    setSentTo(null)
     setStep('identify')
   }
 
@@ -150,8 +154,48 @@ export default function ReceptionFlow({
           onBack={() => setStep('identify')}
           onDone={(a) => {
             setAlerts(a)
-            setStep('visit')
+            setStep('send')
           }}
+        />
+      )}
+
+      {step === 'send' && patient && sentTo && (
+        <div className="bg-white rounded-card shadow-soft p-6 sm:p-8 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success/10 text-success">
+            <Check size={24} />
+          </div>
+          <h2 className="font-display text-xl text-ink-strong mt-4">
+            {patient.full_name} sent to {sentTo}
+          </h2>
+          <p className="text-sm text-ink/55 mt-2">
+            They are on that clinic&apos;s board now. The doctor will log the treatment; the
+            payment will be waiting for you in the ledger afterwards.
+          </p>
+          <div className="flex items-center justify-center gap-3 mt-6">
+            <button
+              type="button"
+              onClick={reset}
+              className="bg-teal hover:bg-teal-deep text-white rounded-control px-5 py-2.5 text-sm font-medium transition-colors"
+            >
+              Send another patient
+            </button>
+            <Link
+              href={`/patients/${patient.id}`}
+              className="text-sm text-ink/55 hover:text-teal-deep px-3 py-2.5"
+            >
+              Open their chart
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {step === 'send' && patient && !sentTo && (
+        <StepSendToClinic
+          patient={patient}
+          alerts={alerts}
+          onBack={() => setStep('safety')}
+          onSent={(clinicName) => setSentTo(clinicName)}
+          onHandleHere={() => setStep('visit')}
         />
       )}
 
@@ -159,7 +203,7 @@ export default function ReceptionFlow({
         <StepVisit
           patient={patient}
           procedures={procedures}
-          onBack={() => setStep('safety')}
+          onBack={() => setStep('send')}
           onSaved={handleVisitSaved}
         />
       )}
