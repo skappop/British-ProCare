@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json
+import mimetypes
 import os
 import time
 import subprocess
@@ -25,6 +26,7 @@ class DentalAgentApp:
         # Session tracking
         self.session_active = False
         self.session_start_time: Optional[float] = None
+        self.close_after_upload = False
         self.one2_process: Optional[subprocess.Popen] = None
         self.ezdent_process: Optional[subprocess.Popen] = None
         self.one2_running = False
@@ -329,6 +331,15 @@ class DentalAgentApp:
             width=30
         )
         self.end_btn.pack(pady=(20, 10))
+
+        # Upload progress (packed only while an upload is running)
+        self.upload_progress = ttk.Progressbar(parent, mode="determinate", length=400)
+        self.upload_status_label = ttk.Label(
+            parent,
+            text="",
+            font=("Segoe UI", 9),
+            foreground="#666"
+        )
 
         # Session info
         self.session_info_label = ttk.Label(
@@ -664,7 +675,7 @@ class DentalAgentApp:
             self.session_info_label.config(text="No software launched yet")
 
     def _end_session(self):
-        """End session and upload images"""
+        """End session: scan for new images, then upload them in the background"""
         patient_id = self.patient_id_var.get().strip()
 
         if not patient_id:
@@ -692,39 +703,308 @@ class DentalAgentApp:
             # Recalculate counts after deduplication
             deduped_one2 = [f for f in deduped_files if str(f).startswith(str(self.config["one2_export"]))]
             deduped_ezdent = [f for f in deduped_files if str(f).startswith(str(self.config.get("ezdent_export", "")))]
+        except Exception as e:
+            # Scanning failed, so nothing has been uploaded. Leave the session and
+            # the imaging software alone rather than tearing down over a read error.
+            messagebox.showerror("Error", f"Failed to scan for images: {e}")
+            return
 
-            if not deduped_files:
-                response = messagebox.askyesnocancel(
-                    "⚠️ No Images Found",
-                    "No new images were detected during this session.\n\n"
-                    "This could mean:\n"
-                    "• No images were captured\n"
-                    "• Export folders are not configured correctly\n"
-                    "• Images are still processing\n\n"
-                    "End session anyway?",
-                    icon='warning'
+        if not deduped_files:
+            response = messagebox.askyesnocancel(
+                "\u26a0\ufe0f No Images Found",
+                "No new images were detected during this session.\n\n"
+                "This could mean:\n"
+                "\u2022 No images were captured\n"
+                "\u2022 Export folders are not configured correctly\n"
+                "\u2022 Images are still processing\n\n"
+                "End session anyway?",
+                icon='warning'
+            )
+
+            if response is True:  # Yes - end anyway, nothing to lose
+                self._cleanup_processes()
+                self._reset_ui()
+            return
+
+        self._start_upload(patient_id, deduped_files, len(deduped_one2), len(deduped_ezdent))
+
+    def _start_upload(self, patient_id: str, files: List[Path], one2_count: int, ezdent_count: int):
+        """Hand the upload to a worker thread so the window stays responsive"""
+        self.end_btn.config(state="disabled")
+
+        self.upload_progress["maximum"] = len(files)
+        self.upload_progress["value"] = 0
+        self.upload_progress.pack(fill="x", pady=(5, 0))
+        self.upload_status_label.config(
+            text=f"Preparing {len(files)} image(s)\u2026",
+            foreground="#666"
+        )
+        self.upload_status_label.pack(anchor="w")
+
+        worker = threading.Thread(
+            target=self._upload_worker,
+            args=(patient_id, list(files), one2_count, ezdent_count),
+            daemon=True,
+        )
+        worker.start()
+
+    def _upload_worker(self, patient_id: str, files: List[Path], one2_count: int, ezdent_count: int):
+        """
+        Runs off the main thread, so it must never touch a widget directly \u2014
+        everything goes back through self.root.after().
+
+        Images go straight from this machine to Supabase Storage using signed
+        URLs. Posting them through the clinic API instead would cap the whole
+        session at Vercel's 4.5MB request body limit.
+        """
+        api_base = self.config.get("api_base_url")
+        api_key = self.config.get("bridge_api_key")
+
+        if not api_key:
+            self._finish({
+                "ok": False,
+                "title": "Configuration Error",
+                "message": "Bridge API Key not configured. Please set it in the Settings tab.",
+            })
+            return
+
+        headers = {"Authorization": f"Bearer {api_key}"}
+
+        try:
+            # 1. Ask the server for one signed upload URL per file.
+            self._progress(0, len(files), "Requesting upload links\u2026")
+            sign_response = requests.post(
+                f"{api_base}/api/bridge/upload-url",
+                json={"patient_id": patient_id, "filenames": [f.name for f in files]},
+                headers=headers,
+                timeout=30,
+            )
+
+            if sign_response.status_code != 200:
+                self._finish(self._server_error(sign_response, patient_id))
+                return
+
+            slots = {}
+            for item in sign_response.json().get("uploads", []):
+                slots.setdefault(item["filename"], []).append(item)
+
+            # 2. Send the bytes to storage, one file at a time.
+            uploaded = []
+            failures = []
+
+            for index, file_path in enumerate(files, start=1):
+                available = slots.get(file_path.name)
+                if not available:
+                    failures.append((file_path.name, "no upload link returned"))
+                    continue
+
+                slot = available.pop(0)
+                self._progress(
+                    index - 1,
+                    len(files),
+                    f"Uploading {file_path.name} ({index} of {len(files)})\u2026",
                 )
 
-                if response is True:  # Yes - end anyway
-                    self._cleanup_processes()
-                    self._reset_ui()
-                    return
-                elif response is False:  # No - keep session open
-                    return
-                else:  # Cancel
-                    return
+                error = self._put_to_storage(file_path, slot)
+                if error:
+                    failures.append((file_path.name, error))
+                else:
+                    uploaded.append({
+                        "path": slot["path"],
+                        "filename": file_path.name,
+                        "category": slot.get("category"),
+                        "size": file_path.stat().st_size,
+                    })
+
+                self._progress(index, len(files), None)
+
+            if not uploaded:
+                self._finish({
+                    "ok": False,
+                    "title": "Upload Failed",
+                    "message": (
+                        "No images could be uploaded.\n\n"
+                        + self._format_failures(failures)
+                        + "\n\nYour images are still on this computer and the session is "
+                          "still open \u2014 click End Session & Upload again to retry."
+                    ),
+                })
+                return
+
+            # 3. Register what landed so it appears in the patient's gallery.
+            self._progress(len(files), len(files), "Saving to patient record\u2026")
+            register_response = requests.post(
+                f"{api_base}/api/bridge/register",
+                json={
+                    "patient_id": patient_id,
+                    "images": uploaded,
+                    "metadata": {
+                        "source": "dental-agent",
+                        "captured_at": datetime.now().isoformat(),
+                    },
+                },
+                headers=headers,
+                timeout=60,
+            )
+
+            if register_response.status_code != 200:
+                self._finish(self._server_error(register_response, patient_id))
+                return
+
+            patient_name = self.active_patient_name or patient_id
+            complete = not failures
+
+            if complete:
+                message = (
+                    f"Uploaded {one2_count} intraoral photo(s) and {ezdent_count} radiograph(s)\n\n"
+                    f"Patient: {patient_name}\n"
+                    f"Images are now available in the clinic system."
+                )
             else:
-                # Upload files
-                self._upload_files(patient_id, deduped_files, len(deduped_one2), len(deduped_ezdent))
+                message = (
+                    f"Uploaded {len(uploaded)} of {len(files)} image(s) for {patient_name}.\n\n"
+                    + self._format_failures(failures)
+                    + "\n\nThe session is still open so you can retry the rest."
+                )
 
-            # Cleanup
-            self._cleanup_processes()
-            self._reset_ui()
+            self._finish({
+                "ok": complete,
+                "title": "\u2713 Upload Successful" if complete else "Partial Upload",
+                "message": message,
+            })
 
+        except requests.exceptions.ConnectionError:
+            self._finish({
+                "ok": False,
+                "title": "Connection Error",
+                "message": (
+                    f"Could not connect to clinic server at:\n{api_base}\n\n"
+                    "Your images are still on this computer and the session is still open.\n\n"
+                    "Please check:\n"
+                    "\u2022 The API Base URL in Settings\n"
+                    "\u2022 Your network connection"
+                ),
+            })
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to end session: {e}")
+            self._finish({
+                "ok": False,
+                "title": "Upload Error",
+                "message": (
+                    f"Failed to upload images: {e}\n\n"
+                    "Your images are still on this computer and the session is still open."
+                ),
+            })
+
+    def _put_to_storage(self, file_path: Path, slot: Dict) -> Optional[str]:
+        """PUT one file to its signed URL. Returns an error string, or None on success."""
+        content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        last_error = None
+
+        for attempt in range(3):
+            try:
+                with open(file_path, "rb") as handle:
+                    response = requests.put(
+                        slot["signed_url"],
+                        data=handle,
+                        headers={"Content-Type": content_type},
+                        timeout=120,
+                    )
+
+                if response.status_code in (200, 201):
+                    return None
+
+                last_error = f"storage returned {response.status_code}"
+            except Exception as e:
+                last_error = str(e)
+
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+
+        return last_error
+
+    def _progress(self, done: int, total: int, message: Optional[str]):
+        """Push progress to the UI from the worker thread"""
+        self.root.after(0, self._apply_progress, done, total, message)
+
+    def _apply_progress(self, done: int, total: int, message: Optional[str]):
+        self.upload_progress["maximum"] = max(total, 1)
+        self.upload_progress["value"] = done
+        if message:
+            self.upload_status_label.config(text=message, foreground="#666")
+
+    def _finish(self, result: Dict):
+        """Hand the outcome back to the main thread"""
+        self.root.after(0, self._upload_finished, result)
+
+    def _format_failures(self, failures: List) -> str:
+        if not failures:
+            return ""
+
+        lines = [f"\u2022 {name}: {reason}" for name, reason in failures[:5]]
+        if len(failures) > 5:
+            lines.append(f"\u2022 \u2026and {len(failures) - 5} more")
+
+        return "Problems:\n" + "\n".join(lines)
+
+    def _server_error(self, response, patient_id: str) -> Dict:
+        """Turn a non-200 into a message that says what to actually do about it"""
+        if response.status_code == 401:
+            return {
+                "ok": False,
+                "title": "Authentication Failed",
+                "message": "Invalid Bridge API Key. Check the Settings tab \u2014 it must match "
+                           "the key configured on the server.",
+            }
+
+        if response.status_code == 404:
+            return {
+                "ok": False,
+                "title": "Patient Not Found",
+                "message": f"Patient {patient_id} does not exist in the clinic system.\n\n"
+                           "Make sure the patient is created in the web app before capturing.",
+            }
+
+        try:
+            detail = response.json().get("error", "")
+        except Exception:
+            detail = ""
+
+        if not detail:
+            detail = (response.text or "")[:200] or f"HTTP {response.status_code}"
+
+        return {
+            "ok": False,
+            "title": "Upload Error",
+            "message": f"Server error ({response.status_code}): {detail}\n\n"
+                       "Your images are still on this computer and the session is still open.",
+        }
+
+    def _upload_finished(self, result: Dict):
+        """Back on the main thread: report, and only tidy up if everything landed"""
+        self.upload_progress.pack_forget()
+        self.upload_status_label.pack_forget()
+
+        if result.get("ok"):
+            messagebox.showinfo(result["title"], result["message"])
+            # Only now is it safe to close the imaging software.
             self._cleanup_processes()
             self._reset_ui()
+        else:
+            messagebox.showerror(result["title"], result["message"])
+            # Leave One2/EzDent running and the session open so nothing is lost.
+            self.end_btn.config(state="normal")
+            self.status_label.config(
+                text="Upload failed \u2014 session still open, you can retry",
+                foreground="#c00"
+            )
+
+        if self.close_after_upload:
+            if result.get("ok"):
+                self.stop_polling = True
+                self.root.destroy()
+            else:
+                # Do not close over a failed upload; the user decides.
+                self.close_after_upload = False
 
     def _scan_directory(self, directory: Path) -> List[Path]:
         """Scan directory for files created after session start"""
@@ -832,86 +1112,6 @@ class DentalAgentApp:
         # Fallback
         return files[0]
 
-    def _upload_files(self, patient_id: str, files: List[Path], one2_count: int, ezdent_count: int):
-        """Upload files to clinic server"""
-        try:
-            upload_url = f"{self.config.get('api_base_url')}/api/bridge/upload"
-            api_key = self.config.get('bridge_api_key')
-
-            if not api_key:
-                messagebox.showerror(
-                    "Configuration Error",
-                    "Bridge API Key not configured. Please set it in Settings tab."
-                )
-                return
-
-            # Prepare files for upload
-            file_handles = []
-            files_dict = {}
-
-            for i, file_path in enumerate(files):
-                file_handle = open(file_path, 'rb')
-                file_handles.append(file_handle)
-                files_dict[f"file_{i}"] = (file_path.name, file_handle)
-
-            # Prepare metadata
-            metadata = {
-                "source": "dental-agent",
-                "captured_at": datetime.now().isoformat()
-            }
-
-            # Upload with Authorization header
-            response = requests.post(
-                upload_url,
-                data={
-                    "patient_id": patient_id,
-                    "metadata": json.dumps(metadata)
-                },
-                files=files_dict,
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=60
-            )
-
-            # Close all file handles
-            for handle in file_handles:
-                handle.close()
-
-            if response.status_code == 200:
-                result = response.json()
-                patient_name = self.active_patient_name or patient_id
-                messagebox.showinfo(
-                    "✓ Upload Successful",
-                    f"Uploaded {one2_count} intraoral photo(s) and {ezdent_count} radiograph(s)\n\n"
-                    f"Patient: {patient_name}\n"
-                    f"Images are now available in the clinic system."
-                )
-            elif response.status_code == 404:
-                messagebox.showerror(
-                    "Patient Not Found",
-                    f"Patient ID {patient_id} not found in the system.\n\n"
-                    "Please ensure the patient exists in the clinic web app before capturing images."
-                )
-            elif response.status_code == 401:
-                messagebox.showerror(
-                    "Authentication Failed",
-                    "Invalid Bridge API Key. Please check your configuration."
-                )
-            else:
-                error_msg = response.json().get('error', 'Unknown error')
-                messagebox.showerror("Upload Error", f"Server error: {error_msg}")
-
-        except requests.exceptions.ConnectionError:
-            messagebox.showerror(
-                "Connection Error",
-                f"Could not connect to clinic server at:\n{self.config.get('api_base_url')}\n\n"
-                "Please ensure:\n"
-                "• The server is running\n"
-                "• The API Base URL is correct in Settings\n"
-                "• Your network connection is active"
-            )
-        except Exception as e:
-            messagebox.showerror("Upload Error", f"Failed to upload files: {e}")
-
     def _cleanup_processes(self):
         """Terminate launched software processes"""
         if self.one2_process:
@@ -988,9 +1188,11 @@ class DentalAgentApp:
             )
 
             if response is True:  # Yes - end and upload
+                # The upload runs on a worker thread now, so closing has to wait
+                # for it. _upload_finished() destroys the window once it lands,
+                # and keeps it open if the upload failed.
+                self.close_after_upload = True
                 self._end_session()
-                self.stop_polling = True
-                self.root.destroy()
             elif response is False:  # No - close without upload
                 self._cleanup_processes()
                 self.stop_polling = True

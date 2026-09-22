@@ -172,6 +172,24 @@ Install the bridge service on each Windows PC that has Osstem hardware. All uplo
 
 If bridge is offline, staff can still use the web app's manual upload form in the gallery.
 
+## Bridge API surface
+
+| Endpoint | Used by | Purpose |
+| --- | --- | --- |
+| `GET /api/bridge/active-patient` | bridge, agent | Which patient captures should attach to |
+| `POST /api/bridge/active-patient` | web app | Sets it (the patient and gallery pages do this automatically) |
+| `POST /api/bridge/upload-url` | agent | Signed URLs for uploading straight to Supabase Storage |
+| `POST /api/bridge/register` | agent | Records the uploaded objects against the patient |
+| `POST /api/bridge/upload` | bridge | Single-file upload through the API (one image per capture) |
+
+The Dental Agent uploads a whole session at once, so it uses the signed-URL pair
+rather than `/api/bridge/upload`: posting every image through a serverless
+function caps the session at Vercel's **4.5MB request body limit**, which a
+handful of intraoral photos exceeds on its own. Images go from the clinic laptop
+straight to Supabase Storage; only the metadata passes through the API.
+
+This requires the **`patient-images`** storage bucket to exist in Supabase.
+
 ## Security Notes
 
 - `BRIDGE_API_KEY` authenticates the local bridge to your API

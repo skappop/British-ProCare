@@ -39,9 +39,10 @@ export default function StepSafety({
       setMedications(h.medications || '')
       setPregnant(!!h.pregnant)
       setNotes(h.notes || '')
-      // A brand-new patient with no history recorded jumps straight to the form.
-      const hasHistory = !!(h.allergies || h.conditions || h.medications || h.pregnant || h.notes)
-      setEditing(!hasHistory && !s.consent_signed_at)
+      // Reception is never dropped into the clinical form. They see the summary
+      // and can carry on; capturing history is opt-in, and clinical staff can do
+      // it at the chair via the patient's Medical History page.
+      setEditing(false)
       setLoading(false)
     })
     return () => {
@@ -90,11 +91,16 @@ export default function StepSafety({
 
   const h = safety?.medical_history || {}
   const hasFlags = !!(h.allergies || h.conditions || h.pregnant)
+  const hasAnyHistory = !!(h.allergies || h.conditions || h.medications || h.pregnant || h.notes)
 
   // Review mode: history already on file — surface the risks, confirm in one tap.
   if (!editing) {
     return (
-      <StepCard title="Medical safety check" subtitle={patient.full_name} onBack={onBack}>
+      <StepCard
+        title="Medical safety check (optional)"
+        subtitle={patient.full_name}
+        onBack={onBack}
+      >
         <div className="space-y-3">
           {h.allergies && (
             <div className="flex items-start gap-2.5 bg-danger/10 text-danger rounded-control px-4 py-3">
@@ -119,10 +125,17 @@ export default function StepSafety({
             </p>
           )}
           {!hasFlags && !h.medications && (
-            <div className="flex items-center gap-2.5 bg-success/10 text-success rounded-control px-4 py-3">
-              <ShieldCheck size={17} className="shrink-0" />
-              <p className="text-sm">No allergies or conditions on record.</p>
-            </div>
+            hasAnyHistory ? (
+              <div className="flex items-center gap-2.5 bg-success/10 text-success rounded-control px-4 py-3">
+                <ShieldCheck size={17} className="shrink-0" />
+                <p className="text-sm">No allergies or conditions on record.</p>
+              </div>
+            ) : (
+              <div className="bg-marble text-ink/60 rounded-control px-4 py-3 text-sm">
+                No medical history recorded yet. You can continue without it \u2014 clinical
+                staff can complete it at the chair.
+              </div>
+            )
           )}
 
           {safety?.consent_signed_at ? (
@@ -134,14 +147,16 @@ export default function StepSafety({
             </div>
           ) : (
             <div className="bg-marble text-ink/60 rounded-control px-4 py-3 text-sm">
-              No consent recorded yet — update the history to capture it.
+              No consent recorded yet \u2014 optional here, you can capture it any time.
             </div>
           )}
         </div>
 
         <div className="flex items-center justify-between mt-6">
-          <GhostButton onClick={() => setEditing(true)}>Update history</GhostButton>
-          <PrimaryButton onClick={confirmOnFile}>Confirmed, continue →</PrimaryButton>
+          <GhostButton onClick={() => setEditing(true)}>
+            {hasAnyHistory ? 'Update history' : 'Add medical history'}
+          </GhostButton>
+          <PrimaryButton onClick={confirmOnFile}>Continue →</PrimaryButton>
         </div>
       </StepCard>
     )
@@ -200,7 +215,7 @@ export default function StepSafety({
       </div>
 
       <div className="flex items-center justify-between mt-6">
-        <GhostButton onClick={() => onDone(currentAlerts())}>Skip for now</GhostButton>
+        <GhostButton onClick={() => onDone(currentAlerts())}>Continue without saving</GhostButton>
         <PrimaryButton onClick={saveAndContinue} disabled={isPending}>
           {isPending ? 'Saving…' : 'Save & continue →'}
         </PrimaryButton>

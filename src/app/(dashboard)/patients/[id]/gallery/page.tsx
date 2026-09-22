@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import UploadForm from './UploadForm'
 import CategorizedGallery from './CategorizedGallery'
-import ActivePatientSync from './ActivePatientSync'
+import ActivePatientSync from '@/components/ActivePatientSync'
 
 export default async function GalleryPage({
   params,
@@ -24,17 +24,15 @@ export default async function GalleryPage({
 
   return (
     <div className="space-y-6">
-      <ActivePatientSync patientId={id} />
-
       <div className="flex items-center justify-between">
         <div>
           <Link href={`/patients/${id}`} className="text-sm text-teal-deep hover:underline">
             ← Back to {patient.full_name}
           </Link>
           <h1 className="font-display text-2xl text-ink-strong mt-2">Progress Gallery</h1>
-          <p className="text-sm text-ink/60 mt-1">
-            📸 Osstem hardware auto-uploads are active for this patient
-          </p>
+          <div className="mt-2">
+            <ActivePatientSync patientId={id} />
+          </div>
         </div>
       </div>
 

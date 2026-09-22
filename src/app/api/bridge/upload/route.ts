@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { determineCategory } from '@/lib/bridge'
 
 // Server-side Supabase client with service role for uploads
 const supabase = createClient(
@@ -152,49 +153,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
-
-function determineCategory(
-  imageType: string | null,
-  filename: string,
-  ext: string
-): 'radiograph' | 'intraoral' | 'document' {
-  const lower = filename.toLowerCase()
-  const type = imageType?.toLowerCase() || ''
-
-  // Check for EzDent-i X-ray patterns (from Dental Agent)
-  if (lower.includes('temp_iosensor') || lower.includes('ezdent')) {
-    return 'radiograph'
-  }
-
-  // Check for DICOM or X-ray patterns
-  if (ext === 'dcm' || lower.includes('xray') || lower.includes('x-ray') ||
-      lower.includes('panoramic') || lower.includes('ceph') ||
-      type.includes('panoramic') || type.includes('ceph') || type.includes('xray')) {
-    return 'radiograph'
-  }
-
-  // Check for One2 intraoral camera patterns (from Dental Agent)
-  if (lower.includes('one2') || lower.includes('oov')) {
-    return 'intraoral'
-  }
-
-  // Check for intraoral camera patterns
-  if (lower.includes('intraoral') || lower.includes('occlusal') ||
-      type.includes('intraoral') || type.includes('occlusal')) {
-    return 'intraoral'
-  }
-
-  // Check for document patterns
-  if (ext === 'pdf' || ext === 'doc' || ext === 'docx' ||
-      lower.includes('consent') || lower.includes('form')) {
-    return 'document'
-  }
-
-  // Default to intraoral for image files
-  if (['jpg', 'jpeg', 'png', 'bmp'].includes(ext)) {
-    return 'intraoral'
-  }
-
-  return 'document'
 }

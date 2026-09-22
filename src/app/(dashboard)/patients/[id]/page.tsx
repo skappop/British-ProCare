@@ -6,6 +6,7 @@ import PaymentLedger from './PaymentLedger'
 import { getPatientLedger } from './actions'
 import Odontogram from './Odontogram'
 import PatientReportButton from '@/components/PatientReportButton'
+import ActivePatientSync from '@/components/ActivePatientSync'
 import TreatmentPlanPanel from './TreatmentPlanPanel'
 import PatientLabCases from './PatientLabCases'
 import { isOwner } from '@/lib/auth/role'
@@ -120,6 +121,12 @@ export default async function PatientProfilePage({
             Edit Patient
           </Link>
           <PatientReportButton patientId={id} variant="dark" label="Download report" />
+        </div>
+
+        {/* Opening the patient is enough to arm hardware capture — no need to
+            go via the gallery first. */}
+        <div className="mt-4 pt-3 border-t border-white/10">
+          <ActivePatientSync patientId={id} variant="dark" />
         </div>
       </div>
 
