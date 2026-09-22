@@ -128,13 +128,13 @@ function Card({
               <Armchair size={12} /> Seat
             </ActionBtn>
             {appt.patients && (
-              <StartVisit patientId={appt.patients.id} apptId={appt.id} />
+              <StartVisit patientId={appt.patients.id} />
             )}
           </>
         )}
         {appt.status === 'in_chair' && (
           <>
-            {appt.patients && <StartVisit patientId={appt.patients.id} apptId={appt.id} />}
+            {appt.patients && <StartVisit patientId={appt.patients.id} />}
             <ActionBtn onClick={() => onStatus(appt.id, 'completed')} disabled={pending} tone="success">
               <CheckCircle2 size={12} /> Complete
             </ActionBtn>
@@ -177,10 +177,10 @@ function Card({
   )
 }
 
-function StartVisit({ patientId, apptId }: { patientId: string; apptId: string }) {
+function StartVisit({ patientId }: { patientId: string }) {
   return (
     <Link
-      href={`/reception?patient=${patientId}&appt=${apptId}`}
+      href={`/patients/${patientId}`}
       className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-control bg-teal text-white hover:bg-teal-deep transition-colors"
     >
       <Stethoscope size={12} /> Start visit
