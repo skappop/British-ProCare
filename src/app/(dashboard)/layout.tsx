@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import SplashScreen from '@/components/SplashScreen'
 import AppShell from '@/components/AppShell'
+import ArrivalAlerts from '@/components/ArrivalAlerts'
 import { signOut } from './actions'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -24,6 +25,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <AppShell userEmail={user.email || ''} signOutAction={signOut} config={config}>
         {children}
       </AppShell>
+      <ArrivalAlerts />
     </>
   )
 }

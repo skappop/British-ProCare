@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
+import LiveRefresh from '@/components/LiveRefresh'
 
 export default async function PatientsPage({
   searchParams,
@@ -38,7 +39,10 @@ export default async function PatientsPage({
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-display text-2xl text-ink-strong">Patients</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="font-display text-2xl text-ink-strong">Patients</h1>
+          <LiveRefresh tables={['patients']} />
+        </div>
         <Link
           href="/patients/new"
           className="bg-teal hover:bg-teal-deep text-white text-sm px-4 py-2 rounded-control transition-colors"

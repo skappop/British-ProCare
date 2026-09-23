@@ -19,12 +19,14 @@ type ClinicOption = { id: string; name: string; short_name: string | null }
 export default function StepSendToClinic({
   patient,
   alerts,
+  bookedAppointmentId,
   onBack,
   onSent,
   onHandleHere,
 }: {
   patient: ReceptionPatient
   alerts: SafetyAlerts | null
+  bookedAppointmentId: string | null
   onBack: () => void
   onSent: (clinicName: string) => void
   onHandleHere: () => void
@@ -47,7 +49,7 @@ export default function StepSendToClinic({
   function send(clinic: ClinicOption) {
     setError(null)
     startTransition(async () => {
-      const res = await sendPatientToClinic(patient.id, clinic.id, note)
+      const res = await sendPatientToClinic(patient.id, clinic.id, note, bookedAppointmentId)
       if (res.ok) onSent(clinic.name)
       else setError(res.message || 'Could not send the patient')
     })

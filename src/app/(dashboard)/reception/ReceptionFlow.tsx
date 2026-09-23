@@ -15,6 +15,7 @@ import { STEPS } from './types'
 import { linkAppointmentToVisit } from './receptionActions'
 import StepIdentify from './steps/StepIdentify'
 import Link from 'next/link'
+import RegistrationLink from '@/components/RegistrationLink'
 import StepSafety from './steps/StepSafety'
 import StepSendToClinic from './steps/StepSendToClinic'
 import StepVisit from './steps/StepVisit'
@@ -75,7 +76,10 @@ export default function ReceptionFlow({
     <div className="max-w-2xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <p className="text-xs tracking-[0.25em] uppercase text-gold-deep font-mono">Reception</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs tracking-[0.25em] uppercase text-gold-deep font-mono">Reception</p>
+          <RegistrationLink />
+        </div>
         <div className="flex items-baseline justify-between gap-4">
           <h1 className="font-display text-3xl text-ink-strong mt-1.5">Walk-In</h1>
           {patient && (
@@ -196,6 +200,7 @@ export default function ReceptionFlow({
         <StepSendToClinic
           patient={patient}
           alerts={alerts}
+          bookedAppointmentId={appointmentId}
           onBack={() => setStep('safety')}
           onSent={(clinicName) => setSentTo(clinicName)}
           onHandleHere={() => setStep('visit')}

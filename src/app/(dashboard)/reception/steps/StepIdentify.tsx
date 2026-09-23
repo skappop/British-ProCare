@@ -5,6 +5,7 @@ import { Search, UserPlus, CalendarClock, Phone, Hash } from 'lucide-react'
 import type { ReceptionPatient, TodayAppointment } from '../types'
 import { searchWalkInPatients, quickCreatePatient } from '../receptionActions'
 import { StepCard, PrimaryButton, GhostButton, Field, inputClass, inputMonoClass, SectionLabel } from '../ui'
+import PendingRegistrations from './PendingRegistrations'
 
 function timeOf(iso: string) {
   return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
@@ -81,6 +82,8 @@ export default function StepIdentify({
     <StepCard title="Who's here?" subtitle="Tap a booked patient, search, or register a new one.">
       {mode === 'search' && (
         <div className="space-y-6">
+          <PendingRegistrations onPick={(p) => onPick(p, null)} />
+
           {waiting.length > 0 && (
             <div className="space-y-2.5">
               <SectionLabel>Booked today</SectionLabel>

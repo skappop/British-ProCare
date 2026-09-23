@@ -166,7 +166,8 @@ export async function linkAppointmentToVisit(
 export async function sendPatientToClinic(
   patientId: string,
   clinicId: string,
-  notes?: string
+  notes?: string,
+  bookedAppointmentId?: string | null
 ): Promise<{ ok: boolean; message?: string; appointmentId?: string }> {
   const supabase = await createClient()
 
@@ -174,20 +175,51 @@ export async function sendPatientToClinic(
   if (!clinicId) return { ok: false, message: 'Choose a clinic to send the patient to' }
 
   const now = new Date().toISOString()
+  const note = notes?.trim() || null
 
-  const { data, error } = await supabase
-    .from('appointments')
-    .insert({
-      patient_id: patientId,
-      clinic_id: clinicId,
-      scheduled_at: now,
-      arrived_at: now,
-      status: 'arrived',
-      duration_minutes: 30,
-      notes: notes?.trim() || null,
-    })
-    .select('id')
-    .single()
+  // A patient picked from "Booked today" already has an appointment. Route that
+  // one rather than adding a second, which left the booking stranded in
+  // Scheduled and put the patient on the board twice. Anything past check-in
+  // (seated, seen) is a finished visit, so a return trip today gets a new row.
+  let existing: { id: string; status: string; notes: string | null } | null = null
+  if (bookedAppointmentId) {
+    const { data: booked } = await supabase
+      .from('appointments')
+      .select('id, status, notes')
+      .eq('id', bookedAppointmentId)
+      .eq('patient_id', patientId)
+      .maybeSingle()
+
+    if (booked && (booked.status === 'scheduled' || booked.status === 'arrived')) {
+      existing = booked
+    }
+  }
+
+  const { data, error } = existing
+    ? await supabase
+        .from('appointments')
+        .update({
+          clinic_id: clinicId,
+          status: 'arrived',
+          arrived_at: now,
+          notes: note ? [existing.notes, note].filter(Boolean).join(' — ') : existing.notes,
+        })
+        .eq('id', existing.id)
+        .select('id')
+        .single()
+    : await supabase
+        .from('appointments')
+        .insert({
+          patient_id: patientId,
+          clinic_id: clinicId,
+          scheduled_at: now,
+          arrived_at: now,
+          status: 'arrived',
+          duration_minutes: 30,
+          notes: note,
+        })
+        .select('id')
+        .single()
 
   if (error) {
     // Point at the migration that is actually missing rather than echoing a
@@ -230,4 +262,189 @@ export async function getClinicOptions(): Promise<
     .order('sort_order', { ascending: true })
 
   return data ?? []
+}
+
+// ---------------------------------------------------------------------------
+// Online pre-registration
+// ---------------------------------------------------------------------------
+
+export type PendingRegistration = {
+  id: string
+  created_at: string
+  full_name: string
+  phone: string
+  reason: string | null
+  preferred_clinic: string | null
+  has_history: boolean
+  match: { id: string; full_name: string; file_number: string | null } | null
+}
+
+function digits(value: string | null | undefined) {
+  return (value || '').replace(/\D/g, '')
+}
+
+// Egyptian numbers turn up as 010…, +2010…, 002010…; the last nine digits are
+// the part that is always the same.
+function samePhone(a: string | null | undefined, b: string | null | undefined) {
+  const x = digits(a)
+  const y = digits(b)
+  return x.length >= 8 && y.length >= 8 && x.slice(-9) === y.slice(-9)
+}
+
+export async function getPendingRegistrations(): Promise<PendingRegistration[]> {
+  const supabase = await createClient()
+  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+
+  const { data: regs, error } = await supabase
+    .from('patient_registrations')
+    .select('id, created_at, full_name, phone, reason, medical_history, preferred_clinic_id, clinics(name)')
+    .eq('status', 'pending')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(20)
+
+  // Before migration 14 the table does not exist; reception simply shows none.
+  if (error || !regs) return []
+
+  type RegRow = {
+    id: string
+    created_at: string
+    full_name: string
+    phone: string
+    reason: string | null
+    medical_history: Record<string, unknown> | null
+    clinics: { name: string } | { name: string }[] | null
+  }
+
+  const results: PendingRegistration[] = []
+  for (const reg of regs as unknown as RegRow[]) {
+    // Stored numbers carry spaces, dashes and country codes, so match on the
+    // trailing digits with anything allowed between them, then confirm exactly.
+    const tail = digits(reg.phone).slice(-7)
+    let match: PendingRegistration['match'] = null
+    if (tail.length === 7) {
+      const { data: candidates } = await supabase
+        .from('patients')
+        .select('id, full_name, file_number, phone')
+        .ilike('phone', `%${tail.split('').join('%')}%`)
+        .limit(5)
+      const hit = (candidates ?? []).find((p) => samePhone(p.phone, reg.phone))
+      if (hit) match = { id: hit.id, full_name: hit.full_name, file_number: hit.file_number }
+    }
+
+    const history = reg.medical_history || {}
+    results.push({
+      id: reg.id,
+      created_at: reg.created_at,
+      full_name: reg.full_name,
+      phone: reg.phone,
+      reason: reg.reason,
+      preferred_clinic: (Array.isArray(reg.clinics) ? reg.clinics[0]?.name : reg.clinics?.name) ?? null,
+      has_history: !!(history.allergies || history.conditions || history.medications || history.pregnant || history.notes),
+      match,
+    })
+  }
+
+  return results
+}
+
+/**
+ * Turns a pre-registration into a patient at the desk. `target` is 'new' to
+ * create a record, or an existing patient's id when reception has confirmed
+ * it is the same person.
+ *
+ * The self-reported medical history replaces what is on file — it is the
+ * patient's most recent account, and the Safety step shows it for review next.
+ * Treatment consent is not carried over: the online form only confirms the
+ * details are accurate, which is not consent to examination and treatment.
+ */
+export async function acceptRegistration(
+  registrationId: string,
+  target: 'new' | string
+): Promise<{ ok: boolean; message?: string; patient?: ReceptionPatient }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const { data: reg } = await supabase
+    .from('patient_registrations')
+    .select('*')
+    .eq('id', registrationId)
+    .eq('status', 'pending')
+    .maybeSingle()
+
+  if (!reg) return { ok: false, message: 'This registration was already handled.' }
+
+  let patient: ReceptionPatient | null = null
+
+  if (target === 'new') {
+    const { data, error } = await supabase
+      .from('patients')
+      .insert({
+        full_name: reg.full_name,
+        phone: reg.phone,
+        date_of_birth: reg.date_of_birth,
+        gender: reg.gender,
+        medical_history: reg.medical_history,
+      })
+      .select('id, full_name, phone, file_number, is_ortho')
+      .single()
+
+    if (error) return { ok: false, message: error.message }
+    patient = { ...data, is_ortho: !!data.is_ortho }
+  } else {
+    const { data: existing } = await supabase
+      .from('patients')
+      .select('id, full_name, phone, file_number, is_ortho, date_of_birth, gender')
+      .eq('id', target)
+      .maybeSingle()
+
+    if (!existing) return { ok: false, message: 'That patient could not be found.' }
+
+    // Only fill gaps in the demographics; never overwrite what staff entered.
+    const updates: Record<string, unknown> = { medical_history: reg.medical_history }
+    if (!existing.phone && reg.phone) updates.phone = reg.phone
+    if (!existing.date_of_birth && reg.date_of_birth) updates.date_of_birth = reg.date_of_birth
+    if (!existing.gender && reg.gender) updates.gender = reg.gender
+
+    const { error } = await supabase.from('patients').update(updates).eq('id', existing.id)
+    if (error) return { ok: false, message: error.message }
+
+    patient = {
+      id: existing.id,
+      full_name: existing.full_name,
+      phone: existing.phone ?? reg.phone,
+      file_number: existing.file_number,
+      is_ortho: !!existing.is_ortho,
+    }
+  }
+
+  await supabase
+    .from('patient_registrations')
+    .update({
+      status: 'accepted',
+      patient_id: patient.id,
+      handled_at: new Date().toISOString(),
+      handled_by: user?.id ?? null,
+    })
+    .eq('id', registrationId)
+
+  revalidatePath('/patients')
+  return { ok: true, patient }
+}
+
+export async function dismissRegistration(registrationId: string): Promise<{ ok: boolean }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const { error } = await supabase
+    .from('patient_registrations')
+    .update({ status: 'dismissed', handled_at: new Date().toISOString(), handled_by: user?.id ?? null })
+    .eq('id', registrationId)
+    .eq('status', 'pending')
+
+  return { ok: !error }
 }

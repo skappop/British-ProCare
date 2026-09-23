@@ -144,7 +144,7 @@ export default async function PatientProfilePage({
             <ActivePatientSync patientId={id} variant="dark" />
             <OpenInAgentButton patientId={id} />
           </div>
-          <LiveRefresh tables={['visits', 'payments', 'image_records']} label="Live" />
+          <LiveRefresh tables={['visits', 'payments', 'image_records']} label="Live" variant="dark" />
         </div>
       </div>
 

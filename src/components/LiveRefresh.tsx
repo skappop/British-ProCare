@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 /**
@@ -11,16 +12,22 @@ import { createClient } from '@/lib/supabase/client'
  * screen updates. What was missing is everyone else's: reception sending a
  * patient never reached the doctor. This listens for database changes and
  * re-runs the server render for whoever is watching.
+ *
+ * The refresh button is the fallback for when the live link has dropped — a
+ * sleeping laptop or a flaky connection — so nobody has to reload the page.
  */
 export default function LiveRefresh({
   tables,
   label = 'Live',
+  variant = 'light',
 }: {
   tables: string[]
   label?: string
+  variant?: 'light' | 'dark'
 }) {
   const router = useRouter()
   const [connected, setConnected] = useState(false)
+  const [isRefreshing, startRefresh] = useTransition()
 
   // Collapse bursts: a status change can touch several tables at once, and each
   // refresh is a server round trip.
@@ -48,21 +55,40 @@ export default function LiveRefresh({
     }
   }, [key, router])
 
+  const dark = variant === 'dark'
+
   return (
-    <span
-      className="inline-flex items-center gap-1.5 text-xs text-ink/45"
-      title={
-        connected
-          ? 'This page updates on its own when anyone changes something'
-          : 'Not receiving live updates — run migration 13 and check Realtime is enabled'
-      }
-    >
+    <span className="inline-flex items-center gap-2">
       <span
-        className={`h-1.5 w-1.5 rounded-full ${
-          connected ? 'bg-success animate-pulse' : 'bg-ink/25'
+        className={`inline-flex items-center gap-1.5 text-xs ${dark ? 'text-white/50' : 'text-ink/45'}`}
+        title={
+          connected
+            ? 'This page updates on its own when anyone changes something'
+            : 'Not receiving live updates — use the refresh button'
+        }
+      >
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${
+            connected ? 'bg-success animate-pulse' : dark ? 'bg-white/25' : 'bg-ink/25'
+          }`}
+        />
+        {connected ? label : 'Offline'}
+      </span>
+
+      <button
+        type="button"
+        onClick={() => startRefresh(() => router.refresh())}
+        disabled={isRefreshing}
+        title="Refresh now"
+        aria-label="Refresh now"
+        className={`inline-flex h-6 w-6 items-center justify-center rounded-control transition-colors disabled:opacity-60 ${
+          dark
+            ? 'text-white/50 hover:text-white hover:bg-white/10'
+            : 'text-ink/40 hover:text-teal-deep hover:bg-ink/5'
         }`}
-      />
-      {connected ? label : 'Offline'}
+      >
+        <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
+      </button>
     </span>
   )
 }
