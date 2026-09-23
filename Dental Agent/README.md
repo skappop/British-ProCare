@@ -1,3 +1,66 @@
+# ProCare Imaging — the background agent
+
+**This is the current way to run imaging.** The agent runs in the background on
+each chairside PC and is driven entirely from the website:
+
+1. Open the patient's page and find the **Imaging** card.
+2. Choose which computer the patient is at (once per browser — it's remembered).
+3. Press **Intraoral camera**, **X-ray** or **Both**. The software opens on that PC.
+4. Capture as normal. Each image appears in the gallery as it's taken.
+5. Press **End session**. The last images upload and the software closes.
+
+Nobody needs to open or touch the agent. It shows as a round icon by the clock:
+teal when ready, red while imaging, grey when offline or not set up.
+
+## Installing on a PC
+
+In this folder, in an ordinary (not Administrator) Command Prompt:
+
+```
+python setup_agent.py
+```
+
+That downloads the current version, installs what it needs, sets it to start
+with Windows, and starts it. The first time, a settings window opens — fill in:
+
+- **Website** and **Bridge API key** — the same key as in Vercel
+- **Name** for this computer (e.g. "Clinic 1 — Chair 1") and its **clinic**
+  (press *Load / test* to fetch the list)
+- where **One2** and **EzDent-i** are installed, and their **export folders**
+
+Settings are also under right-click on the tray icon.
+
+To update later, run `python setup_agent.py` again — it replaces the running copy.
+To check a PC, run `python doctor.py` and send the output.
+
+## What it will and won't do
+
+- **It never closes the imaging software unless every image uploaded.** If
+  something fails, the software stays open, the session shows the reason on the
+  patient's page, and the images that didn't make it are sent first the next
+  time that patient is imaged.
+- **Only images taken during the session are sent**, and only to that patient.
+  Anything already in the export folders when the session starts is ignored,
+  so back-to-back patients can't pick up each other's images.
+- **X-rays are sent once each.** EzDent-i writes several temporary files per
+  X-ray; the agent waits until the set is complete and sends the best one.
+- **A dropped connection doesn't lose anything.** Captures queue up and send
+  when the network is back. A restart mid-session picks up where it left off.
+- Everything it does is written to `agent.log` in this folder.
+
+## Files
+
+| File | What it is |
+| --- | --- |
+| `dental_agent_service.py` | The background agent (tray, settings, main loop) |
+| `agent_core.py` | Its logic: website API, uploads, watching the export folders |
+| `install_service.py` | Starts it with Windows and registers `procare://` (`--uninstall` to remove) |
+| `setup_agent.py` | Downloads the latest version and runs the installer |
+| `doctor.py` | Read-only health check for a PC |
+| `dental_agent_v2.py` | The previous windowed agent, kept as a manual fallback. It can't run while the background agent is running — quit that from the tray first. |
+
+---
+
 # British ProCare - Dental Agent README
 
 ## Overview

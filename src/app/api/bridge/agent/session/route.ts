@@ -44,6 +44,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Session not found for this station' }, { status: 404, headers: noStore })
   }
 
+  // A finished session is closed for good: no status, count or message
+  // changes. Without this, a report that arrived late with the same status
+  // (failed -> failed) skipped the transition check and could overwrite the
+  // real reason a session failed.
+  if ((FINAL_STATUSES as readonly string[]).includes(session.status)) {
+    return NextResponse.json(
+      { ok: false, refused: true, status: session.status, end_requested: session.end_requested },
+      { status: 409, headers: noStore }
+    )
+  }
+
   const updates: Record<string, unknown> = {}
   const next: string | undefined = body?.status
 

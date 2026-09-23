@@ -4,9 +4,10 @@ Sets up (or updates) the Dental Agent on a clinic PC.
 
     python setup_agent.py
 
-Downloads the current agent from GitHub, checks it is valid before replacing
-anything, makes sure `requests` is installed, and registers the procare://
-button handler so a patient's page can open the agent.
+Downloads the current agent from GitHub, checks each file is valid before
+replacing anything, installs what it needs (requests, and pystray + Pillow for
+the tray icon), then installs ProCare Imaging to run in the background: it
+starts with Windows, sits by the clock, and is driven from the patient's page.
 
 Your config.json is never touched — export folders and the API key are kept.
 Run it again any time to pick up the latest version.
@@ -22,7 +23,14 @@ from datetime import datetime
 from pathlib import Path
 
 RAW = "https://raw.githubusercontent.com/skappop/British-ProCare/main/Dental%20Agent"
-FILES = ["dental_agent_v2.py", "install_protocol.py"]
+FILES = [
+    "agent_core.py",
+    "dental_agent_service.py",
+    "install_service.py",
+    "doctor.py",
+    # The previous windowed agent, kept as a manual fallback.
+    "dental_agent_v2.py",
+]
 HERE = Path(__file__).resolve().parent
 
 
@@ -68,35 +76,46 @@ def update_file(name: str) -> bool:
     return True
 
 
-def ensure_requests() -> bool:
-    try:
-        import requests  # noqa: F401
-        print("  = requests already installed")
-        return True
-    except ImportError:
-        pass
+PACKAGES = {"requests": "requests", "pystray": "pystray", "PIL": "Pillow"}
 
-    print("  . installing requests…")
+
+def ensure_packages() -> bool:
+    missing = []
+    for module, package in PACKAGES.items():
+        try:
+            __import__(module)
+            print(f"  = {package} already installed")
+        except ImportError:
+            missing.append(package)
+
+    if not missing:
+        return True
+
+    print(f"  . installing {', '.join(missing)}…")
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--quiet", "requests"],
+        [sys.executable, "-m", "pip", "install", "--quiet", *missing],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
         print("  ! pip failed:")
         print("   ", (result.stderr or result.stdout).strip()[:400])
-        return False
+        if "requests" in missing:
+            return False
+        # Without pystray the agent still runs, just without a tray icon.
+        print("  - continuing: the agent will run without a tray icon")
+        return True
 
-    print("  + requests installed")
+    print(f"  + installed {', '.join(missing)}")
     return True
 
 
-def register_protocol() -> bool:
+def install_background() -> bool:
     if sys.platform != "win32":
-        print("  - not Windows, so there is no procare:// handler to register")
+        print("  - not Windows, so there is nothing to install to start with Windows")
         return True
 
     result = subprocess.run(
-        [sys.executable, str(HERE / "install_protocol.py")],
+        [sys.executable, str(HERE / "install_service.py")],
         capture_output=True, text=True,
     )
     print("   ", (result.stdout or result.stderr).strip().replace("\n", "\n    "))
@@ -117,15 +136,16 @@ def main() -> int:
     ok = all([update_file(name) for name in FILES])
 
     step("Checking dependencies")
-    ok = ensure_requests() and ok
+    ok = ensure_packages() and ok
 
-    step("Registering the 'Open in Dental Agent' button")
-    ok = register_protocol() and ok
+    step("Installing ProCare Imaging to run in the background")
+    ok = install_background() and ok
 
     print()
     if ok:
-        print("Setup complete. Start the agent with:")
-        print(f'    python "{HERE / "dental_agent_v2.py"}"')
+        print("Setup complete. ProCare Imaging is running by the clock and will")
+        print("start by itself whenever this Windows user signs in.")
+        print("Imaging is now started from the patient's page on the website.")
     else:
         print("Setup finished with problems — see the messages above.")
         print("Your existing agent and config.json were left alone.")

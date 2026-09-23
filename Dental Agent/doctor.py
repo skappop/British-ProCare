@@ -61,31 +61,37 @@ def check_python():
             f"pythonw.exe {'found' if windowless.exists() else 'MISSING (agent will flash a console)'}"
         )
 
-    try:
-        import requests  # noqa: F401
-        ok("requests installed")
-    except ImportError:
-        bad("requests NOT installed  ->  python -m pip install requests")
+    for module, package, why in (
+        ("requests", "requests", "required"),
+        ("pystray", "pystray", "tray icon"),
+        ("PIL", "Pillow", "tray icon"),
+    ):
+        try:
+            __import__(module)
+            ok(f"{package} installed")
+        except ImportError:
+            bad(f"{package} NOT installed ({why})  ->  python -m pip install {package}")
 
 
 def check_files():
     section("Files in this folder")
     info(str(HERE))
 
-    for name in ("dental_agent_v2.py", "install_protocol.py", "config.json"):
+    for name in ("agent_core.py", "dental_agent_service.py", "install_service.py", "config.json"):
         path = HERE / name
         if path.exists():
             ok(f"{name}  ({path.stat().st_size:,} bytes)")
         else:
             bad(f"{name} MISSING")
 
-    agent = HERE / "dental_agent_v2.py"
+    agent = HERE / "dental_agent_service.py"
     if not agent.exists():
+        bad("background agent not installed  ->  python setup_agent.py")
         return
 
     # Is this the current version, or an old copy?
     try:
-        with urllib.request.urlopen(f"{RAW}/dental_agent_v2.py", timeout=15) as response:
+        with urllib.request.urlopen(f"{RAW}/dental_agent_service.py", timeout=15) as response:
             latest = response.read()
     except (urllib.error.URLError, OSError) as exc:
         info(f"could not check GitHub for a newer version: {exc}")
@@ -93,20 +99,14 @@ def check_files():
 
     local = agent.read_bytes()
     if local == latest:
-        ok("dental_agent_v2.py is the current version")
+        ok("background agent is the current version")
     else:
         bad(
-            f"dental_agent_v2.py is OUT OF DATE "
+            f"background agent is OUT OF DATE "
             f"(this PC {len(local):,} bytes, GitHub {len(latest):,})"
         )
         info("fix:  python setup_agent.py")
 
-    has_protocol = b"claim_single_instance" in local
-    (ok if has_protocol else bad)(
-        "agent supports the procare:// button"
-        if has_protocol
-        else "this agent PREDATES the button — it cannot be opened from the web app"
-    )
 
 
 def check_protocol():
@@ -133,6 +133,8 @@ def check_protocol():
 
     ok("registered")
     info(command)
+    if "dental_agent_service.py" not in command:
+        bad("it opens the OLD agent window, not ProCare Imaging  ->  python install_service.py")
 
     # A handler pointing at a file that is not there is the usual reason the
     # button silently does nothing.
@@ -145,13 +147,62 @@ def check_protocol():
             )
 
 
+def check_station():
+    section("This computer (station.json)")
+    station_file = HERE / "station.json"
+    if not station_file.exists():
+        bad("not registered yet — start the agent and fill in its Settings")
+        return
+    try:
+        station = json.loads(station_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        bad(f"unreadable: {exc}")
+        return
+    ok(f"name: {station.get('name') or '(none)'}")
+    (ok if station.get("clinic_id") else bad)(
+        "clinic chosen" if station.get("clinic_id")
+        else "no clinic chosen — the agent's Settings -> Load / test -> pick one"
+    )
+
+
+def check_autostart():
+    section("Starts with Windows")
+    if sys.platform != "win32":
+        info("not Windows — nothing to check")
+        return
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
+            command, _ = winreg.QueryValueEx(key, "ProCareImaging")
+        ok("yes")
+        info(command)
+    except FileNotFoundError:
+        bad("NO — it will not come back after a restart  ->  python install_service.py")
+
+
+def check_log():
+    section("Recent activity (agent.log)")
+    log_file = HERE / "agent.log"
+    if not log_file.exists():
+        info("no log yet — the agent has not run on this PC")
+        return
+    try:
+        lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()[-6:]
+    except OSError as exc:
+        bad(f"unreadable: {exc}")
+        return
+    for line in lines:
+        info(line[:140])
+
+
 def check_running():
     section("Is the agent running?")
     try:
         with socket.create_connection(("127.0.0.1", PROTOCOL_PORT), timeout=2):
-            ok(f"yes — listening on 127.0.0.1:{PROTOCOL_PORT}")
+            ok(f"yes — running in the background")
     except OSError:
-        info("not running (that is fine; the button will start it)")
+        bad("NOT running — imaging from the website will not work on this PC")
+        info("start it:  python install_service.py   (also restores autostart)")
 
 
 def check_config():
@@ -214,8 +265,11 @@ def main():
     check_python()
     check_files()
     check_config()
+    check_station()
     check_protocol()
+    check_autostart()
     check_running()
+    check_log()
     say("\nDone. Copy everything above when reporting a problem.")
     return 0
 

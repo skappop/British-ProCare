@@ -45,3 +45,13 @@ backup/backup.config.json
 backup/backup.log
 backup/ProCare-Backup/
 ProCare-Backup/
+
+# python bytecode
+__pycache__/
+*.pyc
+
+# Dental Agent runtime files: per-PC identity, queue and logs
+Dental Agent/station.json
+Dental Agent/leftovers.json
+Dental Agent/session_state.json
+Dental Agent/agent.log*
