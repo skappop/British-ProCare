@@ -119,7 +119,8 @@ export function VisitDraft({
       if (res.ok) {
         setSelectedIds([])
         setNotes('')
-        router.refresh()
+        // Visit done: back to the day's board, where the patient now shows as seen.
+        router.push('/appointments')
       }
     })
   }
