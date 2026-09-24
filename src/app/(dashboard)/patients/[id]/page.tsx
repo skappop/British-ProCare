@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import LogVisitForm from './LogVisitForm'
+import { VisitDraft, TreatmentPicker, FinishVisit } from './LogVisitForm'
 import Odontogram from './Odontogram'
 import PatientReportButton from '@/components/PatientReportButton'
 import ActivePatientSync from '@/components/ActivePatientSync'
@@ -95,8 +95,22 @@ export default async function PatientProfilePage({
     .eq('patient_id', id)
     .order('sent_at', { ascending: false })
 
-  const recentVisits = (visits ?? []).slice(0, 5)
-  const olderVisits = (visits ?? []).slice(5)
+  const visitProps = {
+    patientId: id,
+    current: currentVisit,
+    seenToday,
+    upcoming,
+    clinics: clinicList,
+    defaultClinicId: currentClinicId,
+    suggestedWeeks,
+  }
+  const last = visits?.[0] as { visit_date: string; visit_procedures?: { procedures?: { name?: string } }[] } | undefined
+  const lastVisit = last
+    ? {
+        date: last.visit_date,
+        procedures: (last.visit_procedures ?? []).map((vp) => vp.procedures?.name).filter((n): n is string => !!n),
+      }
+    : null
   const renderVisit = (v: any) => (
     <div key={v.id} className="px-4 py-3">
       <div className="flex justify-between text-sm">
@@ -163,7 +177,7 @@ export default async function PatientProfilePage({
               Billing
             </Link>
           )}
-          <PatientReportButton patientId={id} variant="dark" label="Download report" />
+          <PatientReportButton patientId={id} variant="menu" />
         </div>
 
         {/* Opening the patient is enough to arm hardware capture — no need to
@@ -203,57 +217,51 @@ export default async function PatientProfilePage({
         </div>
       )}
 
-      <VisitPanel
-        patientId={id}
-        current={currentVisit}
-        seenToday={seenToday}
-        upcoming={upcoming}
-        clinics={clinicList}
-        defaultClinicId={currentClinicId}
-        suggestedWeeks={suggestedWeeks}
-      />
-
-      <ImagingPanel patientId={id} />
-
-      <Odontogram patientId={id} initialOdontogram={patient.odontogram || {}} />
-
-      {patient.is_ortho && (
-        <TreatmentPlanPanel
-            patientId={id}
-          initialPlan={plan || null}
-          initialPhases={phases}
-          unassignedVisits={unassignedVisits}
-        />
-      )}
-
-      <PatientLabCases patientId={id} initialCases={labCases || []} />
-
-      <div>
-        <h2 className="font-display text-lg text-ink-strong mb-3">Visit History</h2>
-        <div className="bg-white rounded-card shadow-soft divide-y divide-ink/5">
-          {recentVisits.map(renderVisit)}
-          {olderVisits.length > 0 && (
-            <details className="group">
-              <summary className="px-4 py-3 text-sm text-teal-deep cursor-pointer hover:underline list-none">
-                Show {olderVisits.length} earlier visit{olderVisits.length === 1 ? '' : 's'}
-              </summary>
-              <div className="divide-y divide-ink/5 border-t border-ink/5">{olderVisits.map(renderVisit)}</div>
-            </details>
-          )}
-          {(!visits || visits.length === 0) && (
-            <div className="px-4 py-8 text-center text-ink/40 text-sm">No visits yet.</div>
-          )}
-        </div>
-      </div>
-
-      {/* Last on the page on purpose: work through the patient, then save —
-          and saving marks them seen and hands them to reception. */}
-      <LogVisitForm
+      {/* The page follows the visit: who is here, what is done today, the
+          chart and imaging taken while doing it, then the rest of the record,
+          and last of all "treatment completed" with the next booking. */}
+      <VisitDraft
         patientId={id}
         procedures={procedures || []}
         isOrtho={patient.is_ortho}
         finishesVisit={!!currentVisit}
-      />
+      >
+        <VisitPanel part="status" {...visitProps} />
+
+        <TreatmentPicker lastVisit={lastVisit} />
+
+        <Odontogram patientId={id} initialOdontogram={patient.odontogram || {}} />
+
+        <ImagingPanel patientId={id} />
+
+        {patient.is_ortho && (
+          <TreatmentPlanPanel
+            patientId={id}
+            initialPlan={plan || null}
+            initialPhases={phases}
+            unassignedVisits={unassignedVisits}
+          />
+        )}
+
+        <PatientLabCases patientId={id} initialCases={labCases || []} />
+
+        <details className="bg-white rounded-card shadow-soft group">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">
+            <span className="font-display text-lg text-ink-strong">Visit history</span>
+            <span className="text-sm text-teal-deep group-open:hidden">
+              {visits?.length ? `Show ${visits.length} visit${visits.length === 1 ? '' : 's'}` : 'No visits yet'}
+            </span>
+            <span className="hidden text-sm text-ink/45 group-open:inline">Hide</span>
+          </summary>
+          <div className="divide-y divide-ink/5 border-t border-ink/5">
+            {(visits ?? []).map(renderVisit)}
+          </div>
+        </details>
+
+        <FinishVisit>
+          <VisitPanel part="next" {...visitProps} />
+        </FinishVisit>
+      </VisitDraft>
     </div>
   )
 }

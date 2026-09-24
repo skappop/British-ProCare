@@ -63,6 +63,8 @@ export type PatientReport = {
   plan: ReportPlan | null
   labs: ReportLab[]
   images: ReportImage[]
+  /** Set when the image list itself could not be read. */
+  imagesError: string | null
   nextVisit: string | null
 }
 
@@ -106,7 +108,7 @@ export async function getPatientReportData(patientId: string): Promise<PatientRe
       .order('sent_at', { ascending: false }),
     supabase
       .from('image_records')
-      .select('id, storage_path, category, image_type, taken_at, is_baseline, notes, metadata')
+      .select('*')
       .eq('patient_id', patientId)
       .order('taken_at', { ascending: true }),
     supabase
@@ -160,11 +162,17 @@ export async function getPatientReportData(patientId: string): Promise<PatientRe
     id: string; storage_path: string; category: string | null; image_type: string; taken_at: string
     is_baseline: boolean | null; notes: string | null; metadata: { original_filename?: string } | null
   }
+  if (imagesRes.error) console.error('report: image list failed', imagesRes.error.message)
   const imageRows = (imagesRes.data ?? []) as unknown as ImageRow[]
-  const signed = imageRows.length
-    ? (await supabase.storage.from('patient-images').createSignedUrls(imageRows.map((r) => r.storage_path), 600)).data ?? []
-    : []
-  const urlByPath = new Map(signed.map((s) => [s.path, s.signedUrl]))
+  // One link per file, the same way the gallery gets its (working) links; a
+  // batch request matched back by path could silently leave images out.
+  const bucket = supabase.storage.from('patient-images')
+  const signed = await Promise.all(
+    imageRows.map(async (r) => {
+      const { data } = await bucket.createSignedUrl(r.storage_path, 900)
+      return data?.signedUrl ?? null
+    })
+  )
 
   const mh = (patient.medical_history as Record<string, unknown>) || {}
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
@@ -189,9 +197,10 @@ export async function getPatientReportData(patientId: string): Promise<PatientRe
     findings,
     plan,
     labs: (labsRes.data ?? []) as ReportLab[],
-    images: imageRows.map((r) => ({
+    imagesError: imagesRes.error?.message ?? null,
+    images: imageRows.map((r, i) => ({
       id: r.id,
-      url: urlByPath.get(r.storage_path) ?? null,
+      url: signed[i],
       filename: r.metadata?.original_filename || r.storage_path.split('/').pop() || 'image',
       category: r.category || 'intraoral',
       image_type: r.image_type,

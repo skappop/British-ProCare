@@ -9,25 +9,44 @@ const MAX_SIDE = 1600
 const QUALITY = 0.82
 const UNSUPPORTED = /\.(dcm|dicom|tif|tiff|raw)$/i
 
-async function prepare(url: string, filename: string): Promise<Omit<PreparedImage, 'id'> | { reason: string }> {
+async function download(url: string): Promise<Blob | string> {
+  try {
+    const res = await fetch(url, { cache: 'no-store' })
+    if (!res.ok) return `download refused (${res.status})`
+    return await res.blob()
+  } catch {
+    return 'download blocked'
+  }
+}
+
+async function prepare(
+  id: string,
+  url: string | null,
+  filename: string
+): Promise<Omit<PreparedImage, 'id'> | { reason: string }> {
   if (UNSUPPORTED.test(filename)) {
     return { reason: 'DICOM/TIFF — view it in the app' }
   }
 
-  let blob: Blob
-  try {
-    const res = await fetch(url)
-    if (!res.ok) return { reason: `could not download (${res.status})` }
-    blob = await res.blob()
-  } catch {
-    return { reason: 'could not download' }
+  // Straight from storage first; if that is refused or blocked, through this
+  // site instead, which reads the file with the signed-in user's access.
+  let blob = url ? await download(url) : 'no storage link'
+  if (typeof blob === 'string') {
+    const direct = blob
+    const viaSite = await download(`/api/report-image/${encodeURIComponent(id)}`)
+    if (typeof viaSite === 'string') {
+      if (/\((400|404)\)/.test(viaSite)) return { reason: 'the file is missing from storage' }
+      if (/\(401\)/.test(viaSite)) return { reason: 'signed out — sign in again and retry' }
+      return { reason: `could not be downloaded (${direct}; ${viaSite} through the site)` }
+    }
+    blob = viaSite
   }
 
   let bitmap: ImageBitmap
   try {
     bitmap = await createImageBitmap(blob)
   } catch {
-    return { reason: 'format the browser cannot read' }
+    return { reason: `not a picture the browser can read (${blob.type || 'unknown type'})` }
   }
 
   const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height))
@@ -65,9 +84,7 @@ export async function loadReportImages(
   async function worker() {
     while (next < images.length) {
       const image = images[next++]
-      const result = image.url
-        ? await prepare(image.url, image.filename)
-        : { reason: 'file missing from storage' }
+      const result = await prepare(image.id, image.url, image.filename)
       if ('dataUrl' in result) prepared.set(image.id, { id: image.id, ...result })
       else skipped.push({ id: image.id, reason: result.reason })
       done += 1

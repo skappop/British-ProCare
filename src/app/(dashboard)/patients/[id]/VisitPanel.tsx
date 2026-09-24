@@ -35,12 +35,14 @@ function isoDate(d: Date) {
 }
 
 /**
- * Today's visit and the next one, on the patient's page. There is no seating
- * step: the patient is either here or seen, and saving the treatment at the
- * bottom of the page is what marks them seen. The follow-up is booked here too.
+ * Today's visit and the next one, on the patient's page. `part="status"` is the
+ * line at the top (here / seen today); `part="next"` is the follow-up booking
+ * that closes the visit at the bottom. There is no seating step: saving the
+ * treatment is what marks the patient seen.
  */
 export default function VisitPanel({
   patientId,
+  part,
   current,
   seenToday,
   upcoming,
@@ -49,6 +51,7 @@ export default function VisitPanel({
   suggestedWeeks,
 }: {
   patientId: string
+  part: 'status' | 'next'
   current: CurrentVisit | null
   seenToday: SeenVisit | null
   upcoming: Upcoming[]
@@ -117,8 +120,10 @@ export default function VisitPanel({
     })
   }
 
-  return (
-    <div className="bg-white rounded-card shadow-soft p-5 space-y-4">
+  if (part === 'status') {
+    if (!current && !seenToday) return null
+    return (
+      <div className="bg-white rounded-card shadow-soft px-5 py-4 space-y-3">
       {current && current.status !== 'scheduled' ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -135,9 +140,6 @@ export default function VisitPanel({
             {current.clinic && <span className="text-xs text-ink/45">{current.clinic}</span>}
           </div>
           <div className="flex items-center gap-3">
-            <a href="#treatment" className="text-sm text-teal-deep hover:underline">
-              Record treatment ↓
-            </a>
             <button
               type="button"
               onClick={markSeen}
@@ -167,7 +169,15 @@ export default function VisitPanel({
           </span>
         </div>
       ) : null}
+      {message && (
+        <p className={`text-sm ${message.ok ? 'text-success' : 'text-danger'}`}>{message.text}</p>
+      )}
+      </div>
+    )
+  }
 
+  return (
+    <div className="space-y-3 border-t border-ink/10 pt-5">
       <div>
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-medium text-ink-strong">Next visit</h3>
@@ -250,7 +260,6 @@ export default function VisitPanel({
           </div>
         )}
       </div>
-
       {message && (
         <p className={`text-sm ${message.ok ? 'text-success' : 'text-danger'}`}>{message.text}</p>
       )}
