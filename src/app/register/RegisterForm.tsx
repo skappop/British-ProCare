@@ -31,7 +31,8 @@ export default function RegisterForm() {
         </div>
         <h1 className="font-display text-2xl text-ink-strong mt-5">Thank you, {state.firstName}</h1>
         <p className="text-ink/60 mt-3 leading-relaxed">
-          We have your details. When you arrive, just give your name at reception.
+          We have your details. If you don&apos;t have an appointment yet, our reception will contact you on
+          WhatsApp or by phone to arrange a time. When you arrive, just give your name at reception.
         </p>
       </div>
     )
