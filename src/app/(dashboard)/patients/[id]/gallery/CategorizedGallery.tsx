@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { getSignedUrls } from '../imageActions'
+import PatientReportButton from '@/components/PatientReportButton'
 
 type ImageRecord = {
   id: string
@@ -92,18 +93,8 @@ export default function CategorizedGallery({ images, patientId }: CategorizedGal
           </button>
         </div>
 
-        {/* PDF Export Button */}
-        <a
-          href={`/api/patients/${patientId}/gallery-pdf`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-ink/10 hover:bg-ink/15 text-ink-strong text-sm px-4 py-2 rounded-control transition-colors flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          Export PDF Summary
-        </a>
+        {/* Images embedded, shrunk in the browser — the old server export only listed them. */}
+        <PatientReportButton patientId={patientId} mode="images" label="Export images (PDF)" />
       </div>
 
       {/* Image Grid */}
