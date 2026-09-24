@@ -27,7 +27,7 @@ CRON_SECRET=<generate random key>
 ### 4. Run Migration
 ```bash
 # In Supabase SQL editor, paste contents of:
-migrations/add_sheets_sync.sql
+migrations/legacy/add_sheets_sync.sql
 ```
 
 ### 5. Install & Deploy
@@ -154,4 +154,4 @@ After first sync, you should see:
 
 ---
 
-For detailed instructions, see [GOOGLE_SHEETS_SETUP.md](GOOGLE_SHEETS_SETUP.md)
+For detailed instructions, see [google-sheets-setup.md](google-sheets-setup.md)
