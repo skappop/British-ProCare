@@ -202,6 +202,18 @@ export default function ImagingPanel({ patientId }: { patientId: string }) {
             <span className="h-2 w-2 rounded-full bg-success" />
             {station.name} is ready
           </p>
+          {station.capabilities.intraoral === false && station.capabilities.xray === false && (
+            // Connected, but nothing to start: say so rather than showing no buttons.
+            <div className="rounded-control bg-gold/10 px-3 py-2.5 text-sm text-ink/70 space-y-1">
+              <p className="font-medium text-ink-strong">No camera or X-ray program is set up on this computer yet.</p>
+              <p>
+                On <span className="font-medium">{station.name}</span>: right-click the British ProCare icon by
+                the clock → <span className="font-medium">Settings</span>. Fill in the <span className="font-medium">Program</span>{' '}
+                and <span className="font-medium">Export folder</span> for the intraoral camera (One2) and/or the X-ray
+                (EzDent-i), then Save. The buttons appear here within a few seconds.
+              </p>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             {station.capabilities.intraoral !== false && (
               <StartButton
