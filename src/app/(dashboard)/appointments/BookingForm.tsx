@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect } from 'react'
 import { createAppointment, searchPatientsForBooking } from './actions'
+import { localDateTimeToIso } from '@/lib/utils'
 
 type PatientHit = { id: string; full_name: string; phone: string | null; file_number: string | null }
 
@@ -40,6 +41,8 @@ export default function BookingForm({
       return
     }
     formData.set('patient_id', selected.id)
+    const iso = localDateTimeToIso(String(formData.get('date') ?? ''), String(formData.get('time') ?? ''))
+    if (iso) formData.set('scheduled_at', iso)
 
     startTransition(async () => {
       const res = await createAppointment(formData)

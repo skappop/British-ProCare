@@ -28,7 +28,7 @@ function ago(iso: string) {
 export default function PendingRegistrations({
   onPick,
 }: {
-  onPick: (patient: ReceptionPatient) => void
+  onPick: (patient: ReceptionPatient, reason: string | null) => void
 }) {
   const [items, setItems] = useState<PendingRegistration[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -60,7 +60,7 @@ export default function PendingRegistrations({
     startTransition(async () => {
       const res = await acceptRegistration(reg.id, target)
       setBusy(null)
-      if (res.ok && res.patient) onPick(res.patient)
+      if (res.ok && res.patient) onPick(res.patient, res.reason ?? null)
       else {
         setError(res.message || 'Could not check this patient in')
         load()
@@ -102,9 +102,10 @@ export default function PendingRegistrations({
                   {reg.preferred_clinic ? ` · ${reg.preferred_clinic}` : ''}
                 </p>
                 {reg.reason && <p className="text-xs text-ink/55 mt-1 line-clamp-2">{reg.reason}</p>}
-                {reg.has_history && (
-                  <p className="inline-flex items-center gap-1 text-[11px] text-teal-deep mt-1">
-                    <HeartPulse size={11} /> Medical history filled in
+                {reg.health_note && (
+                  <p className="flex items-start gap-1.5 text-xs text-gold-deep bg-gold/10 rounded-control px-2 py-1.5 mt-1.5">
+                    <HeartPulse size={12} className="mt-0.5 shrink-0" />
+                    <span>{reg.health_note}</span>
                   </p>
                 )}
               </div>

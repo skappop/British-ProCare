@@ -20,14 +20,11 @@ const schema = z.object({
   date_of_birth: z.string().trim().max(10).optional(),
   gender: z.enum(['', 'M', 'F']).optional(),
   reason: z.string().trim().max(500).optional(),
-  preferred_clinic_id: z.string().trim().max(40).optional(),
-  allergies: z.string().trim().max(500).optional(),
-  conditions: z.string().trim().max(500).optional(),
-  medications: z.string().trim().max(500).optional(),
-  notes: z.string().trim().max(1000).optional(),
+  // One free-text box instead of separate allergy / condition / medicine
+  // questions, which patients found overwhelming. Staff see it highlighted.
+  health_note: z.string().trim().max(1000).optional(),
 })
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 
 export async function submitRegistration(
@@ -45,10 +42,10 @@ export async function submitRegistration(
   }
 
   const raw = Object.fromEntries(
-    [
-      'full_name', 'phone', 'date_of_birth', 'gender', 'reason', 'preferred_clinic_id',
-      'allergies', 'conditions', 'medications', 'notes',
-    ].map((k) => [k, String(formData.get(k) ?? '')])
+    ['full_name', 'phone', 'date_of_birth', 'gender', 'reason', 'health_note'].map((k) => [
+      k,
+      String(formData.get(k) ?? ''),
+    ])
   )
 
   const parsed = schema.safeParse(raw)
@@ -76,14 +73,12 @@ export async function submitRegistration(
     date_of_birth: data.date_of_birth && DATE.test(data.date_of_birth) ? data.date_of_birth : null,
     gender: data.gender || null,
     reason: data.reason || null,
-    preferred_clinic_id:
-      data.preferred_clinic_id && UUID.test(data.preferred_clinic_id) ? data.preferred_clinic_id : null,
     medical_history: {
-      allergies: data.allergies || null,
-      conditions: data.conditions || null,
-      medications: data.medications || null,
-      pregnant: formData.get('pregnant') === 'on',
-      notes: data.notes || null,
+      allergies: null,
+      conditions: null,
+      medications: null,
+      pregnant: false,
+      notes: data.health_note || null,
     },
     consent: true,
   })

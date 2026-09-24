@@ -7,20 +7,15 @@ import { submitRegistration, type RegisterState } from './actions'
 const input =
   'w-full rounded-control border border-ink/15 bg-white px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-teal'
 
-function Label({ children, hint }: { children: React.ReactNode; hint?: string }) {
-  return (
-    <span className="block mb-1.5">
-      <span className="text-sm font-medium text-ink-strong">{children}</span>
-      {hint && <span className="block text-xs text-ink/45 mt-0.5">{hint}</span>}
-    </span>
-  )
-}
-
 function FieldError({ text }: { text?: string }) {
   return text ? <p className="text-danger text-xs mt-1.5">{text}</p> : null
 }
 
-export default function RegisterForm({ clinics }: { clinics: { id: string; name: string }[] }) {
+/**
+ * Kept deliberately short: who you are, why you're coming, and anything the
+ * doctor should know. Everything else is asked at the clinic.
+ */
+export default function RegisterForm() {
   const [state, action, pending] = useActionState<RegisterState, FormData>(submitRegistration, {
     ok: false,
   })
@@ -36,8 +31,7 @@ export default function RegisterForm({ clinics }: { clinics: { id: string; name:
         </div>
         <h1 className="font-display text-2xl text-ink-strong mt-5">Thank you, {state.firstName}</h1>
         <p className="text-ink/60 mt-3 leading-relaxed">
-          Your details are with us. When you arrive, just give your name at reception — there is
-          nothing else to fill in.
+          We have your details. When you arrive, just give your name at reception.
         </p>
       </div>
     )
@@ -46,13 +40,10 @@ export default function RegisterForm({ clinics }: { clinics: { id: string; name:
   const errors = state.fieldErrors ?? {}
 
   return (
-    <form action={action} className="space-y-8">
+    <form action={action} className="bg-white rounded-card shadow-soft p-6 space-y-5">
       <div>
         <h1 className="font-display text-2xl text-ink-strong">Before your visit</h1>
-        <p className="text-ink/60 mt-2 leading-relaxed">
-          Filling this in now saves time at reception. It takes about two minutes, and only the
-          clinic team can see it.
-        </p>
+        <p className="text-ink/55 mt-1">It takes a minute and saves time at reception.</p>
       </div>
 
       {state.message && !state.ok && (
@@ -63,109 +54,66 @@ export default function RegisterForm({ clinics }: { clinics: { id: string; name:
       <input type="text" name="website" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
       <input type="hidden" name="started_at" value={startedAt} />
 
-      <section className="bg-white rounded-card shadow-soft p-6 space-y-5">
-        <h2 className="font-display text-lg text-ink-strong">About you</h2>
+      <label className="block">
+        <span className="block text-sm font-medium text-ink-strong mb-1.5">Full name</span>
+        <input name="full_name" required autoComplete="name" className={input} />
+        <FieldError text={errors.full_name} />
+      </label>
 
+      <label className="block">
+        <span className="block text-sm font-medium text-ink-strong mb-1.5">Mobile number</span>
+        <input name="phone" required type="tel" autoComplete="tel" inputMode="tel" className={input} />
+        <FieldError text={errors.phone} />
+      </label>
+
+      <div className="grid grid-cols-[1fr_auto] gap-3">
         <label className="block">
-          <Label>Full name *</Label>
-          <input name="full_name" required autoComplete="name" className={input} />
-          <FieldError text={errors.full_name} />
-        </label>
-
-        <label className="block">
-          <Label>Mobile number *</Label>
-          <input name="phone" required type="tel" autoComplete="tel" inputMode="tel" className={input} />
-          <FieldError text={errors.phone} />
-        </label>
-
-        <div className="grid grid-cols-2 gap-4">
-          <label className="block">
-            <Label>Date of birth</Label>
-            <input name="date_of_birth" type="date" className={input} />
-          </label>
-          <label className="block">
-            <Label>Gender</Label>
-            <select name="gender" className={input} defaultValue="">
-              <option value="">—</option>
-              <option value="M">Male</option>
-              <option value="F">Female</option>
-            </select>
-          </label>
-        </div>
-
-        {clinics.length > 1 && (
-          <label className="block">
-            <Label>Which clinic are you visiting?</Label>
-            <select name="preferred_clinic_id" className={input} defaultValue="">
-              <option value="">Not sure</option>
-              {clinics.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        <label className="block">
-          <Label hint="Optional — e.g. check-up, pain in a tooth, braces">Reason for your visit</Label>
-          <textarea name="reason" rows={2} className={input} />
-        </label>
-      </section>
-
-      <section className="bg-white rounded-card shadow-soft p-6 space-y-5">
-        <div>
-          <h2 className="font-display text-lg text-ink-strong">Your health</h2>
-          <p className="text-sm text-ink/55 mt-1">
-            This keeps your treatment safe. Leave anything blank that doesn&apos;t apply.
-          </p>
-        </div>
-
-        <label className="block">
-          <Label hint="Medicines, latex, anaesthetics, foods…">Allergies</Label>
-          <textarea name="allergies" rows={2} className={input} />
-        </label>
-
-        <label className="block">
-          <Label hint="e.g. diabetes, heart conditions, blood pressure, bleeding disorders">
-            Medical conditions
-          </Label>
-          <textarea name="conditions" rows={2} className={input} />
-        </label>
-
-        <label className="block">
-          <Label>Medicines you take regularly</Label>
-          <textarea name="medications" rows={2} className={input} />
-        </label>
-
-        <label className="flex items-center gap-3 text-sm text-ink-strong">
-          <input type="checkbox" name="pregnant" className="h-5 w-5 rounded" />
-          I am pregnant or breastfeeding
-        </label>
-
-        <label className="block">
-          <Label>Anything else the dentist should know</Label>
-          <textarea name="notes" rows={2} className={input} />
-        </label>
-      </section>
-
-      <section className="bg-white rounded-card shadow-soft p-6">
-        <label className="flex items-start gap-3 text-sm text-ink-strong">
-          <input type="checkbox" name="consent" className="h-5 w-5 rounded mt-0.5 shrink-0" />
-          <span>
-            The information above is accurate to the best of my knowledge, and I agree to British
-            ProCare storing it for my dental care.
+          <span className="block text-sm font-medium text-ink-strong mb-1.5">
+            Date of birth <span className="font-normal text-ink/40">(optional)</span>
           </span>
+          <input name="date_of_birth" type="date" className={input} />
         </label>
-        <FieldError text={errors.consent} />
-      </section>
+        <label className="block">
+          <span className="block text-sm font-medium text-ink-strong mb-1.5">&nbsp;</span>
+          <select name="gender" className={input} defaultValue="" aria-label="Gender (optional)">
+            <option value="">Gender</option>
+            <option value="M">Male</option>
+            <option value="F">Female</option>
+          </select>
+        </label>
+      </div>
+
+      <label className="block">
+        <span className="block text-sm font-medium text-ink-strong mb-1.5">
+          What brings you in? <span className="font-normal text-ink/40">(optional)</span>
+        </span>
+        <input name="reason" placeholder="e.g. toothache, check-up, braces" className={input} />
+      </label>
+
+      <label className="block">
+        <span className="block text-sm font-medium text-ink-strong mb-1.5">
+          Anything the doctor should know? <span className="font-normal text-ink/40">(optional)</span>
+        </span>
+        <textarea
+          name="health_note"
+          rows={2}
+          placeholder="Allergies, medical conditions, medicines, pregnancy…"
+          className={input}
+        />
+      </label>
+
+      <label className="flex items-start gap-3 text-sm text-ink/70">
+        <input type="checkbox" name="consent" className="h-5 w-5 rounded mt-0.5 shrink-0" />
+        <span>My details are correct, and British ProCare may keep them for my dental care.</span>
+      </label>
+      <FieldError text={errors.consent} />
 
       <button
         type="submit"
         disabled={pending}
         className="w-full bg-teal hover:bg-teal-deep text-white rounded-control py-3.5 text-base font-medium transition-colors disabled:opacity-60"
       >
-        {pending ? 'Sending…' : 'Send my details'}
+        {pending ? 'Sending…' : 'Send'}
       </button>
     </form>
   )

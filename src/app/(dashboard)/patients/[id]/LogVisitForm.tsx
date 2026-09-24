@@ -46,8 +46,6 @@ export default function LogVisitForm({
   const [lastQuickLog, setLastQuickLog] = useState<Partial<QuickLogData> | null>(null)
   const [quickLogData, setQuickLogData] = useState<QuickLogData | null>(null)
   const [bomPreview, setBomPreview] = useState<BomLine[]>([])
-  const [fee, setFee] = useState('')
-  const [feeTouched, setFeeTouched] = useState(false)
   const [hasLastVisit, setHasLastVisit] = useState(false)
 
   useEffect(() => {
@@ -57,19 +55,9 @@ export default function LogVisitForm({
 
   const groupedProcedures = useMemo(() => groupByCategory(procedures), [procedures])
 
-  // Auto-fee: sum of selected procedures' base fees, unless user typed their own
-  const autoFee = useMemo(
-    () =>
-      selectedIds.reduce((sum, id) => {
-        const p = procedures.find((x) => x.id === id)
-        return sum + (Number(p?.base_fee) || 0)
-      }, 0),
-    [selectedIds, procedures]
-  )
-
-  useEffect(() => {
-    if (!feeTouched) setFee(autoFee > 0 ? String(autoFee) : '')
-  }, [autoFee, feeTouched])
+  // No fees on this form: it is used chairside, in front of the patient. The
+  // server charges the procedures' standard prices and the front desk adjusts
+  // on the Billing page.
 
   // Live BOM preview whenever selection changes
   useEffect(() => {
@@ -87,10 +75,6 @@ export default function LogVisitForm({
       const setup = await getLastVisitSetup(patientId)
       if (!setup) return
       setSelectedIds(setup.procedureIds)
-      if (setup.fee) {
-        setFee(String(setup.fee))
-        setFeeTouched(true)
-      }
       if (setup.quickLog) setLastQuickLog(setup.quickLog)
     })
   }
@@ -98,7 +82,6 @@ export default function LogVisitForm({
   function handleSubmit(formData: FormData) {
     selectedIds.forEach((id) => formData.append('procedure_ids', id))
     formData.set('patient_id', patientId)
-    formData.set('fee', fee)
     if (quickLogData) formData.set('quick_log', JSON.stringify(quickLogData))
 
     startTransition(async () => {
@@ -106,8 +89,6 @@ export default function LogVisitForm({
       setResult(res)
       if (res.ok) {
         setSelectedIds([])
-        setFee('')
-        setFeeTouched(false)
         const form = document.getElementById('log-visit-form') as HTMLFormElement
         form?.reset()
       }
@@ -156,7 +137,6 @@ export default function LogVisitForm({
                     }`}
                   >
                     {proc.name}
-                    {proc.base_fee ? <span className="opacity-60 ml-1">· {proc.base_fee}</span> : null}
                   </button>
                 ))}
               </div>
@@ -197,21 +177,6 @@ export default function LogVisitForm({
             <input
               name="notes"
               className="w-full rounded-control border border-ink/15 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal"
-            />
-          </div>
-          <div className="space-y-1 w-36">
-            <label className="text-sm text-ink/70">
-              Fee (EGP) {!feeTouched && autoFee > 0 && <span className="text-gold-deep text-xs">auto</span>}
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={fee}
-              onChange={(e) => {
-                setFee(e.target.value)
-                setFeeTouched(true)
-              }}
-              className="w-full rounded-control border border-ink/15 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal"
             />
           </div>
         </div>

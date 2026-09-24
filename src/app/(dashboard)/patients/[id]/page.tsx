@@ -2,17 +2,17 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import LogVisitForm from './LogVisitForm'
-import PaymentLedger from './PaymentLedger'
-import { getPatientLedger } from './actions'
 import Odontogram from './Odontogram'
 import PatientReportButton from '@/components/PatientReportButton'
 import ActivePatientSync from '@/components/ActivePatientSync'
 import LiveRefresh from '@/components/LiveRefresh'
 import ImagingPanel from '@/components/ImagingPanel'
-import { Wallet } from 'lucide-react'
+import VisitPanel from './VisitPanel'
+import { getVisitState } from './visitState'
+import { getClinics } from '@/lib/clinics'
 import TreatmentPlanPanel from './TreatmentPlanPanel'
 import PatientLabCases from './PatientLabCases'
-import { isOwner } from '@/lib/auth/role'
+import { canHandleMoney } from '@/lib/auth/role'
 
 function formatQuickLog(log: any): string[] {
   if (!log) return []
@@ -48,13 +48,16 @@ export default async function PatientProfilePage({
     .eq('is_active', true)
     .order('name')
 
-  const canSeeFinancials = await isOwner()
+  // This is the doctor's chairside view and the patient can see the screen, so
+  // no fees, balances or payments appear on it for anyone. The front desk gets
+  // a plain link to the separate billing page — no figures.
+  const showBillingLink = await canHandleMoney()
 
-  const ledger = canSeeFinancials ? await getPatientLedger(id) : null
-  const visitOptions = (visits || []).map((v: any) => ({
-    id: v.id,
-    label: `${new Date(v.visit_date).toLocaleDateString('en-GB')} — EGP ${v.fee_charged ?? 0}`,
-  }))
+  // Today's visit and what's booked next, for the doctor to run from here.
+  const { currentVisit, currentClinicId, upcoming } = await getVisitState(id)
+  const clinicList = (await getClinics()).map((c) => ({ id: c.id, name: c.name }))
+  const suggestedWeeks =
+    Number((visits?.[0] as { ortho_quick_log?: { next_visit_weeks?: number } } | undefined)?.ortho_quick_log?.next_visit_weeks) || null
 
   // Ortho treatment plan (only relevant if is_ortho, but fetch is cheap and harmless either way)
   const { data: plan } = await supabase
@@ -100,22 +103,8 @@ export default async function PatientProfilePage({
           <span>{patient.phone || 'No phone'}</span>
           <span>File #{patient.file_number || '—'}</span>
           {patient.is_ortho && <span className="text-gold-light">Ortho Case</span>}
-          {canSeeFinancials && ledger && ledger.balance > 0 && (
-            <span className="text-danger">Balance: EGP {ledger.balance.toLocaleString()}</span>
-          )}
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-2 mt-4 items-center">
-          {canSeeFinancials && (
-            <a
-              href="#ledger"
-              className="inline-flex items-center gap-1.5 rounded-control bg-gold/20 hover:bg-gold/30 text-gold-light px-3 py-1.5 text-sm font-medium transition-colors"
-            >
-              <Wallet size={15} />
-              {ledger && ledger.balance > 0
-                ? `Take payment · EGP ${ledger.balance.toLocaleString()} due`
-                : 'Payments'}
-            </a>
-          )}
           <Link
             href={`/patients/${id}/gallery`}
             className="text-sm text-gold-light hover:underline"
@@ -134,6 +123,11 @@ export default async function PatientProfilePage({
           >
             Edit Patient
           </Link>
+          {showBillingLink && (
+            <Link href={`/patients/${id}/billing`} className="text-sm text-white/50 hover:text-gold-light">
+              Billing
+            </Link>
+          )}
           <PatientReportButton patientId={id} variant="dark" label="Download report" />
         </div>
 
@@ -141,7 +135,16 @@ export default async function PatientProfilePage({
             go via the gallery first. */}
         <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
           <ActivePatientSync patientId={id} variant="dark" />
-          <LiveRefresh tables={['visits', 'payments', 'image_records']} label="Live" variant="dark" />
+          <LiveRefresh
+            tables={['visits', 'image_records', 'appointments']}
+            filters={{
+              visits: `patient_id=eq.${id}`,
+              image_records: `patient_id=eq.${id}`,
+              appointments: `patient_id=eq.${id}`,
+            }}
+            label="Live"
+            variant="dark"
+          />
         </div>
       </div>
 
@@ -157,6 +160,22 @@ export default async function PatientProfilePage({
           <p className="text-gold-deep text-sm font-medium">⚠ Currently pregnant / breastfeeding</p>
         </div>
       )}
+      {patient.medical_history?.notes && (
+        <div className="bg-gold/10 rounded-card p-4">
+          <p className="text-gold-deep text-sm">
+            <span className="font-medium">⚠ Health note:</span> {patient.medical_history.notes}
+          </p>
+        </div>
+      )}
+
+      <VisitPanel
+        patientId={id}
+        current={currentVisit}
+        upcoming={upcoming}
+        clinics={clinicList}
+        defaultClinicId={currentClinicId}
+        suggestedWeeks={suggestedWeeks}
+      />
 
       <ImagingPanel patientId={id} />
 
@@ -184,21 +203,6 @@ export default async function PatientProfilePage({
                 <span className="font-mono text-ink/70">
                   {new Date(v.visit_date).toLocaleDateString()}
                 </span>
-                <div className="flex items-center gap-3">
-                  {v.fee_charged && canSeeFinancials && (
-                    <span className="font-mono text-ink-strong">EGP {v.fee_charged}</span>
-                  )}
-                  {canSeeFinancials && (
-                    <a
-                      href={`/receipts/${v.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-teal-deep hover:underline"
-                    >
-                      Receipt
-                    </a>
-                  )}
-                </div>
               </div>
 
               {v.visit_procedures?.length > 0 && (
@@ -231,18 +235,6 @@ export default async function PatientProfilePage({
         </div>
       </div>
 
-      {canSeeFinancials && ledger && (
-        <div id="ledger" className="scroll-mt-6 space-y-6">
-          <PaymentLedger
-            patientId={id}
-            totalCharged={ledger.totalCharged}
-            totalPaid={ledger.totalPaid}
-            balance={ledger.balance}
-            payments={ledger.payments}
-            visitOptions={visitOptions}
-          />
-        </div>
-      )}
     </div>
   )
 }

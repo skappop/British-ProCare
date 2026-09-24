@@ -20,10 +20,13 @@ export default function LiveRefresh({
   tables,
   label = 'Live',
   variant = 'light',
+  filters = {},
 }: {
   tables: string[]
   label?: string
   variant?: 'light' | 'dark'
+  /** Optional Realtime row filter per table, e.g. { appointments: 'patient_id=eq.<id>' }. */
+  filters?: Record<string, string>
 }) {
   const router = useRouter()
   const [connected, setConnected] = useState(false)
@@ -32,14 +35,18 @@ export default function LiveRefresh({
   // Collapse bursts: a status change can touch several tables at once, and each
   // refresh is a server round trip.
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const key = tables.join(',')
+  const key = tables.map((t) => (filters[t] ? `${t}|${filters[t]}` : t)).join(',')
 
   useEffect(() => {
     const supabase = createClient()
     const channel = supabase.channel(`live:${key}`)
 
-    for (const table of key.split(',')) {
-      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+    for (const entry of key.split(',')) {
+      const [table, filter] = entry.split('|')
+      const spec = filter
+        ? { event: '*' as const, schema: 'public', table, filter }
+        : { event: '*' as const, schema: 'public', table }
+      channel.on('postgres_changes', spec, () => {
         if (timer.current) clearTimeout(timer.current)
         timer.current = setTimeout(() => router.refresh(), 250)
       })

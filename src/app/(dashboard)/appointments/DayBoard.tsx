@@ -153,7 +153,7 @@ function Card({
           <>
             {appt.patients && (
               <Link
-                href={`/patients/${appt.patients.id}#ledger`}
+                href={`/patients/${appt.patients.id}/billing`}
                 className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-control bg-gold/12 text-gold-deep hover:bg-gold/20 font-medium transition-colors"
               >
                 <Wallet size={12} /> Take payment

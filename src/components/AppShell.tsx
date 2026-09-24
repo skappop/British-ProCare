@@ -22,11 +22,13 @@ export default function AppShell({
   userEmail,
   signOutAction,
   config,
+  role,
   children,
 }: {
   userEmail: string
   signOutAction: () => Promise<void>
   config?: NavConfig | null
+  role?: 'owner' | 'dentist' | 'assistant' | null
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
@@ -106,7 +108,7 @@ export default function AppShell({
         <div className="gold-hairline mx-6 mb-4" />
 
         <div className="flex-1 overflow-y-auto">
-          <SidebarNav config={config} />
+          <SidebarNav config={config} role={role} />
         </div>
 
         <div className="px-6 pb-6">

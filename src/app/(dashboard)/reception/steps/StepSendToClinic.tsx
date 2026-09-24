@@ -20,6 +20,7 @@ export default function StepSendToClinic({
   patient,
   alerts,
   bookedAppointmentId,
+  initialNote,
   onBack,
   onSent,
   onHandleHere,
@@ -27,12 +28,14 @@ export default function StepSendToClinic({
   patient: ReceptionPatient
   alerts: SafetyAlerts | null
   bookedAppointmentId: string | null
+  initialNote?: string | null
   onBack: () => void
   onSent: (clinicName: string) => void
   onHandleHere: () => void
 }) {
   const [clinics, setClinics] = useState<ClinicOption[] | null>(null)
-  const [note, setNote] = useState('')
+  // Pre-filled with the reason the patient gave when registering online.
+  const [note, setNote] = useState(initialNote ?? '')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 

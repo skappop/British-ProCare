@@ -31,9 +31,14 @@ interface NavConfig {
 
 interface SidebarNavProps {
   config?: NavConfig | null
+  role?: 'owner' | 'dentist' | 'assistant' | null
 }
 
-export default function SidebarNav({ config }: SidebarNavProps) {
+// Dentists work from the patient's page — imaging, treatment, labs and the next
+// booking all live there — so their menu is just the way in plus stock.
+const DENTIST_NAV = new Set(['/patients', '/inventory'])
+
+export default function SidebarNav({ config, role }: SidebarNavProps) {
   const pathname = usePathname()
 
   // Define all possible navigation items with their visibility logic
@@ -88,7 +93,9 @@ export default function SidebarNav({ config }: SidebarNavProps) {
   ]
 
   // Filter to only visible items
-  const visibleNav = NAV.filter(item => item.visible)
+  const visibleNav = NAV.filter(
+    (item) => item.visible && (role !== 'dentist' || DENTIST_NAV.has(item.href))
+  )
 
   return (
     <nav className="flex flex-col gap-1 px-3 text-sm">

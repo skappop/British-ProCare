@@ -25,11 +25,20 @@ export async function logVisit(formData: FormData) {
     }
   }
 
+  // The doctor's screen no longer shows fees, so an empty fee is normal here:
+  // charge the procedures' standard prices, and reception adjusts on Billing.
+  let feeValue: number | null = fee ? parseFloat(fee) : null
+  if (feeValue === null || !Number.isFinite(feeValue)) {
+    const { data: priced } = await supabase.from('procedures').select('base_fee').in('id', procedureIds)
+    const total = (priced ?? []).reduce((sum, p) => sum + (Number(p.base_fee) || 0), 0)
+    feeValue = total > 0 ? total : null
+  }
+
   const { data, error } = await supabase.rpc('log_visit_with_deduction', {
     p_patient_id: patientId,
     p_procedure_ids: procedureIds,
     p_notes: notes || null,
-    p_fee: fee ? parseFloat(fee) : null,
+    p_fee: feeValue,
     p_quick_log: quickLog,
   })
 
@@ -135,6 +144,7 @@ export async function recordPayment(formData: FormData) {
   }
 
   revalidatePath(`/patients/${patientId}`)
+  revalidatePath(`/patients/${patientId}/billing`)
   revalidatePath('/')
   revalidatePath('/reports')
 
@@ -145,6 +155,7 @@ export async function deletePayment(id: string, patientId: string) {
   const supabase = await createClient()
   await supabase.from('payments').delete().eq('id', id)
   revalidatePath(`/patients/${patientId}`)
+  revalidatePath(`/patients/${patientId}/billing`)
   revalidatePath('/')
   revalidatePath('/reports')
 }
@@ -170,4 +181,33 @@ export async function getPatientLedger(patientId: string) {
     balance: totalCharged - totalPaid,
     payments: payments || [],
   }
+}
+/**
+ * Reception adjusting what a visit costs (a discount, a correction). The doctor
+ * never sees fees, so this is where the auto-calculated fee gets its final say.
+ */
+export async function updateVisitFee(
+  visitId: string,
+  patientId: string,
+  fee: string
+): Promise<{ ok: boolean; message?: string }> {
+  const { canHandleMoney } = await import('@/lib/auth/role')
+  if (!(await canHandleMoney())) return { ok: false, message: 'Not allowed' }
+
+  const value = fee.trim() === '' ? null : Number(fee)
+  if (value !== null && (!Number.isFinite(value) || value < 0 || value > 10_000_000)) {
+    return { ok: false, message: 'Enter a valid amount' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('visits')
+    .update({ fee_charged: value })
+    .eq('id', visitId)
+    .eq('patient_id', patientId)
+
+  if (error) return { ok: false, message: error.message }
+
+  revalidatePath(`/patients/${patientId}/billing`)
+  return { ok: true }
 }

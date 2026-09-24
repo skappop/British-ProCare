@@ -18,17 +18,24 @@ export async function createAppointment(formData: FormData) {
   const duration = formData.get('duration') as string
   const notes = formData.get('notes') as string
 
-  if (!patientId || !date || !time) {
+  // Prefer the exact instant the browser computed. Building it here from the
+  // bare date and time would read them as UTC (the server's zone), shifting
+  // every booking by the clinic's offset.
+  const iso = formData.get('scheduled_at') as string | null
+  const scheduledAt = iso ? new Date(iso) : new Date(`${date}T${time}:00`)
+
+  if (!patientId || Number.isNaN(scheduledAt.getTime()) || (!iso && (!date || !time))) {
     return { ok: false, message: 'Pick a patient, date, and time' }
   }
 
-  const scheduledAt = new Date(`${date}T${time}:00`)
+  const clinicId = (formData.get('clinic_id') as string) || null
 
   const { error } = await supabase.from('appointments').insert({
     patient_id: patientId,
     scheduled_at: scheduledAt.toISOString(),
     duration_minutes: duration ? parseInt(duration) : 30,
     notes: notes || null,
+    ...(clinicId ? { clinic_id: clinicId } : {}),
   })
 
   if (error) return { ok: false, message: error.message }

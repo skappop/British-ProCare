@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Printer, CalendarPlus, UserRound, RefreshCw, Check } from 'lucide-react'
 import type { PaymentSummary, ReceptionPatient, SavedVisit } from '../types'
 import { createAppointment } from '../../appointments/actions'
+import { localDateTimeToIso } from '@/lib/utils'
 import PatientReportButton from '@/components/PatientReportButton'
 import { StepCard, PrimaryButton, GhostButton, SectionLabel, inputMonoClass } from '../ui'
 
@@ -49,6 +50,8 @@ export default function StepDone({
     fd.set('date', date)
     fd.set('time', time)
     fd.set('duration', duration)
+    const iso = localDateTimeToIso(date, time)
+    if (iso) fd.set('scheduled_at', iso)
 
     startTransition(async () => {
       const res = await createAppointment(fd)

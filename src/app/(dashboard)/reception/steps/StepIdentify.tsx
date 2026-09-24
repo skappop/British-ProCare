@@ -17,7 +17,7 @@ export default function StepIdentify({
 }: {
   todayAppointments: TodayAppointment[]
   // appointmentId is passed when the patient was chosen from today's schedule
-  onPick: (patient: ReceptionPatient, appointmentId: string | null) => void
+  onPick: (patient: ReceptionPatient, appointmentId: string | null, note?: string | null) => void
 }) {
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<ReceptionPatient[]>([])
@@ -82,7 +82,7 @@ export default function StepIdentify({
     <StepCard title="Who's here?" subtitle="Tap a booked patient, search, or register a new one.">
       {mode === 'search' && (
         <div className="space-y-6">
-          <PendingRegistrations onPick={(p) => onPick(p, null)} />
+          <PendingRegistrations onPick={(p, reason) => onPick(p, null, reason)} />
 
           {waiting.length > 0 && (
             <div className="space-y-2.5">

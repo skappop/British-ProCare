@@ -1,6 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import LiveRefresh from '@/components/LiveRefresh'
+import { canHandleMoney } from '@/lib/auth/role'
+import WaitingNow from './WaitingNow'
+import { getWaitingNow } from './waiting'
 
 export default async function PatientsPage({
   searchParams,
@@ -9,6 +12,8 @@ export default async function PatientsPage({
 }) {
   const { q } = await searchParams
   const supabase = await createClient()
+  const showBilling = await canHandleMoney()
+  const waiting = await getWaitingNow()
 
   let query = supabase.from('patients').select('*').order('created_at', { ascending: false })
   if (q) {
@@ -41,7 +46,7 @@ export default async function PatientsPage({
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <h1 className="font-display text-2xl text-ink-strong">Patients</h1>
-          <LiveRefresh tables={['patients']} />
+          <LiveRefresh tables={['patients', 'appointments']} />
         </div>
         <Link
           href="/patients/new"
@@ -50,6 +55,8 @@ export default async function PatientsPage({
           + New Patient
         </Link>
       </div>
+
+      <WaitingNow rows={waiting} />
 
       <form className="mb-6">
         <input
@@ -68,6 +75,7 @@ export default async function PatientsPage({
               <th className="px-4 py-3 font-medium">Phone</th>
               <th className="px-4 py-3 font-medium">File #</th>
               <th className="px-4 py-3 font-medium">Type</th>
+              {showBilling && <th className="px-4 py-3" />}
             </tr>
           </thead>
           <tbody>
@@ -97,6 +105,13 @@ export default async function PatientsPage({
                     )}
                   </div>
                 </td>
+                {showBilling && (
+                  <td className="px-4 py-3 text-right">
+                    <Link href={`/patients/${p.id}/billing`} className="text-xs text-teal-deep hover:underline">
+                      Billing
+                    </Link>
+                  </td>
+                )}
               </tr>
             ))}
             {(!patients || patients.length === 0) && (

@@ -4,6 +4,7 @@ import SplashScreen from '@/components/SplashScreen'
 import AppShell from '@/components/AppShell'
 import ArrivalAlerts from '@/components/ArrivalAlerts'
 import { signOut } from './actions'
+import { getCurrentUserRole } from '@/lib/auth/role'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -19,10 +20,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .select('features_enabled, google_sheets_enabled')
     .single()
 
+  const role = await getCurrentUserRole()
+
   return (
     <>
       <SplashScreen />
-      <AppShell userEmail={user.email || ''} signOutAction={signOut} config={config}>
+      <AppShell userEmail={user.email || ''} signOutAction={signOut} config={config} role={role}>
         {children}
       </AppShell>
       <ArrivalAlerts />

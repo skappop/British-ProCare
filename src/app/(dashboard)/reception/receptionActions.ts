@@ -276,6 +276,7 @@ export type PendingRegistration = {
   reason: string | null
   preferred_clinic: string | null
   has_history: boolean
+  health_note: string | null
   match: { id: string; full_name: string; file_number: string | null } | null
 }
 
@@ -341,6 +342,7 @@ export async function getPendingRegistrations(): Promise<PendingRegistration[]> 
       reason: reg.reason,
       preferred_clinic: (Array.isArray(reg.clinics) ? reg.clinics[0]?.name : reg.clinics?.name) ?? null,
       has_history: !!(history.allergies || history.conditions || history.medications || history.pregnant || history.notes),
+      health_note: typeof history.notes === 'string' ? history.notes : null,
       match,
     })
   }
@@ -361,7 +363,7 @@ export async function getPendingRegistrations(): Promise<PendingRegistration[]> 
 export async function acceptRegistration(
   registrationId: string,
   target: 'new' | string
-): Promise<{ ok: boolean; message?: string; patient?: ReceptionPatient }> {
+): Promise<{ ok: boolean; message?: string; patient?: ReceptionPatient; reason?: string | null }> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -431,7 +433,9 @@ export async function acceptRegistration(
     .eq('id', registrationId)
 
   revalidatePath('/patients')
-  return { ok: true, patient }
+  // The patient's own words for why they came, so the Send step can pass it
+  // to the doctor instead of it being lost here.
+  return { ok: true, patient, reason: reg.reason ?? null }
 }
 
 export async function dismissRegistration(registrationId: string): Promise<{ ok: boolean }> {

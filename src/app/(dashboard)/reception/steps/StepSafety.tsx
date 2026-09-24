@@ -124,7 +124,17 @@ export default function StepSafety({
               <span className="text-ink/40">Medications:</span> {h.medications}
             </p>
           )}
-          {!hasFlags && !h.medications && (
+          {h.notes && (
+            // Online registration puts allergies, conditions and medicines in
+            // one free-text note, so it must be as visible as the fields above.
+            <div className="flex items-start gap-2.5 bg-gold/10 text-gold-deep rounded-control px-4 py-3">
+              <TriangleAlert size={17} className="mt-0.5 shrink-0" />
+              <p className="text-sm">
+                <span className="font-medium">Patient&apos;s note:</span> {h.notes}
+              </p>
+            </div>
+          )}
+          {!hasFlags && !h.medications && !h.notes && (
             hasAnyHistory ? (
               <div className="flex items-center gap-2.5 bg-success/10 text-success rounded-control px-4 py-3">
                 <ShieldCheck size={17} className="shrink-0" />

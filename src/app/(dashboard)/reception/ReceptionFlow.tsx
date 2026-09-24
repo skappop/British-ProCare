@@ -42,6 +42,7 @@ export default function ReceptionFlow({
   const [nextVisitWeeks, setNextVisitWeeks] = useState<number | null>(null)
   const [payment, setPayment] = useState<PaymentSummary | null>(null)
   const [sentTo, setSentTo] = useState<string | null>(null)
+  const [doctorNote, setDoctorNote] = useState<string | null>(null)
 
   const alreadyRouted = !!initialAppointmentId
 
@@ -56,6 +57,7 @@ export default function ReceptionFlow({
     setNextVisitWeeks(null)
     setPayment(null)
     setSentTo(null)
+    setDoctorNote(null)
     setStep('identify')
   }
 
@@ -147,9 +149,10 @@ export default function ReceptionFlow({
       {step === 'identify' && (
         <StepIdentify
           todayAppointments={todayAppointments}
-          onPick={(p, apptId) => {
+          onPick={(p, apptId, note) => {
             setPatient(p)
             setAppointmentId(apptId)
+            setDoctorNote(note ?? null)
             setStep('safety')
           }}
         />
@@ -201,6 +204,7 @@ export default function ReceptionFlow({
           patient={patient}
           alerts={alerts}
           bookedAppointmentId={appointmentId}
+          initialNote={doctorNote}
           onBack={() => setStep('safety')}
           onSent={(clinicName) => setSentTo(clinicName)}
           onHandleHere={() => setStep('visit')}
