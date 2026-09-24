@@ -39,7 +39,7 @@ alter table inventory add column if not exists ordered_quantity numeric;
 create table if not exists stock_events (
   id uuid primary key default gen_random_uuid(),
   batch_id uuid not null,
-  kind text not null check (kind in ('refill', 'empty', 'missing', 'found', 'written_off', 'count', 'ordered', 'received')),
+  kind text not null,
   inventory_id uuid references inventory(id) on delete cascade,
   container_id uuid references containers(id) on delete set null,
   container_item_id uuid references container_items(id) on delete set null,
@@ -57,6 +57,10 @@ create table if not exists stock_events (
 );
 alter table stock_events add column if not exists prev_ordered_at timestamptz;
 alter table stock_events add column if not exists prev_ordered_quantity numeric;
+
+alter table stock_events drop constraint if exists stock_events_kind_check;
+alter table stock_events add constraint stock_events_kind_check
+  check (kind in ('refill', 'empty', 'missing', 'found', 'written_off', 'count', 'ordered', 'received', 'correction'));
 
 create index if not exists stock_events_batch_idx on stock_events (batch_id);
 create index if not exists stock_events_created_idx on stock_events (created_at desc);
@@ -108,7 +112,14 @@ begin
     raise exception 'ALREADY_CHECKED: %', to_char(v_last at time zone 'Africa/Cairo', 'HH24:MI');
   end if;
 
-  for v_line in select * from jsonb_array_elements(coalesce(p_lines, '[]'::jsonb)) loop
+  -- Lines in stock-item order, so two containers sharing items lock them in
+  -- the same order and cannot deadlock each other.
+  for v_line in
+    select l.value
+      from jsonb_array_elements(coalesce(p_lines, '[]'::jsonb)) l
+      left join container_items c on c.id::text = l.value->>'item'
+     order by c.inventory_id
+  loop
     select ci.*, i.name as item_name
       into v_ci
       from container_items ci
@@ -341,6 +352,7 @@ language plpgsql
 as $$
 declare
   v_event record;
+  v_stock numeric;
   v_undone integer := 0;
 begin
   for v_event in
@@ -352,20 +364,32 @@ begin
     if v_event.kind = 'ordered' then
       update inventory set ordered_at = null, ordered_quantity = null where id = v_event.inventory_id;
     else
+      -- Container first, then the cabinet: the same order as the check, so
+      -- an undo and a check running together cannot deadlock.
+      if v_event.container_item_id is not null and (v_event.container_change <> 0 or v_event.missing_change <> 0) then
+        update container_items
+           set current_quantity = least(greatest(current_quantity - v_event.container_change, 0), baseline_quantity),
+               missing_quantity = least(greatest(missing_quantity - v_event.missing_change, 0), baseline_quantity),
+               missing_since = case when missing_quantity - v_event.missing_change > 0 then coalesce(missing_since, now()) else null end
+         where id = v_event.container_item_id;
+      end if;
       if v_event.quantity <> 0 then
-        update inventory set stock = greatest(coalesce(stock, 0) - v_event.quantity, 0) where id = v_event.inventory_id;
+        select coalesce(stock, 0) into v_stock from inventory where id = v_event.inventory_id for update;
+        if v_stock - v_event.quantity >= 0 then
+          update inventory set stock = v_stock - v_event.quantity where id = v_event.inventory_id;
+        else
+          -- E.g. undoing a delivery after most of it was used: stock cannot go
+          -- below 0. Stop at 0, log the correction, and put it up for a recount.
+          update inventory set stock = 0, last_counted_at = null where id = v_event.inventory_id;
+          insert into stock_events (batch_id, kind, inventory_id, quantity, stock_before, stock_after, note)
+          values (gen_random_uuid(), 'correction', v_event.inventory_id, v_event.quantity - v_stock,
+                  v_stock - v_event.quantity, 0, 'Undo would have gone below 0; set to 0 — please recount');
+        end if;
       end if;
       if v_event.kind = 'received' and v_event.prev_ordered_at is not null then
         update inventory
            set ordered_at = v_event.prev_ordered_at, ordered_quantity = v_event.prev_ordered_quantity
          where id = v_event.inventory_id and ordered_at is null;
-      end if;
-      if v_event.container_item_id is not null and (v_event.container_change <> 0 or v_event.missing_change <> 0) then
-        update container_items
-           set current_quantity = greatest(current_quantity - v_event.container_change, 0),
-               missing_quantity = greatest(missing_quantity - v_event.missing_change, 0),
-               missing_since = case when missing_quantity - v_event.missing_change > 0 then coalesce(missing_since, now()) else null end
-         where id = v_event.container_item_id;
       end if;
     end if;
     update stock_events set undone_at = now() where id = v_event.id;

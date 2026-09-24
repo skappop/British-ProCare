@@ -26,7 +26,10 @@ function friendly(message: string) {
 
 async function call(fn: string, args: Record<string, unknown>): Promise<Result> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc(fn, args)
+  let { data, error } = await supabase.rpc(fn, args)
+  // Two saves touching the same items at the same instant: the database
+  // cancels one untouched (all or nothing), so it is safe to try it again.
+  if (error && (error.code === '40P01' || error.code === '40001')) ({ data, error } = await supabase.rpc(fn, args))
   if (error) return { ok: false, message: friendly(error.message) }
   refresh()
   const d = (data ?? {}) as { batch?: string | null; changes?: Result['changes'] }
