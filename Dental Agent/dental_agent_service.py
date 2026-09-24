@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ProCare Imaging — the Dental Agent running in the background.
+British ProCare Imaging — the Dental Agent running in the background.
 
 Starts with Windows and sits in the tray by the clock. The doctor runs imaging
 from the patient's page on the website; this opens the camera or X-ray
@@ -38,6 +38,22 @@ from agent_core import (
 )
 
 HERE = Path(__file__).resolve().parent
+APP_NAME = "British ProCare Imaging"
+LOGO = HERE / "logo_mark.png"  # the tooth mark from the clinic logo
+
+# The clinic's colours, as on the website.
+BRAND = {
+    "marquina": "#17181A",
+    "marquina_soft": "#26282C",
+    "gold": "#B8935E",
+    "gold_light": "#D9BC85",
+    "gold_deep": "#A07B4A",
+    "cream": "#F7F5F1",
+    "ink": "#3E4C59",
+    "muted": "#8A9099",
+    "teal": "#2FA6A2",
+}
+
 IDLE_POLL = 3.0
 ACTIVE_POLL = 1.5
 MAX_BACKOFF = 30.0
@@ -221,17 +237,31 @@ def run_tray(agent: Agent) -> bool:
         log.warning("pystray/Pillow not installed — running without a tray icon")
         return False
 
-    def image(fill):
-        img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    try:
+        logo = Image.open(LOGO).convert("RGBA") if LOGO.exists() else None
+    except OSError:
+        logo = None
+
+    def image(dot):
+        """The clinic logo on a dark tile, with a status dot in the corner."""
+        size = 64
+        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        draw.ellipse((4, 4, 60, 60), fill=fill)
-        draw.ellipse((22, 22, 42, 42), fill=(255, 255, 255, 255))
+        draw.rounded_rectangle((0, 0, size - 1, size - 1), radius=14, fill=(23, 24, 26, 255))
+        if logo is not None:
+            mark = logo.copy()
+            mark.thumbnail((54, 54), Image.LANCZOS)
+            img.alpha_composite(mark, ((size - mark.width) // 2, (size - mark.height) // 2))
+        else:
+            draw.ellipse((14, 14, 50, 50), outline=(184, 147, 94, 255), width=5)
+        draw.ellipse((38, 38, 63, 63), fill=(255, 255, 255, 255))
+        draw.ellipse((42, 42, 59, 59), fill=dot)
         return img
 
     icons = {
-        "ready": image((29, 122, 118, 255)),   # teal
-        "busy": image((200, 55, 45, 255)),     # red while imaging
-        "off": image((150, 150, 150, 255)),    # grey when offline / not set up
+        "ready": image((47, 166, 162, 255)),   # teal: ready
+        "busy": image((200, 55, 45, 255)),     # red: imaging now
+        "off": image((150, 150, 150, 255)),    # grey: offline / not set up
     }
 
     def config_url():
@@ -244,7 +274,7 @@ def run_tray(agent: Agent) -> bool:
     icon = pystray.Icon(
         "procare-imaging",
         icons["off"],
-        "ProCare Imaging",
+        APP_NAME,
         menu=pystray.Menu(
             pystray.MenuItem(lambda _item: agent.state, None, enabled=False),
             pystray.Menu.SEPARATOR,
@@ -260,7 +290,7 @@ def run_tray(agent: Agent) -> bool:
         while not agent.stop.is_set():
             key = "busy" if agent.busy else "ready" if agent.online else "off"
             icon.icon = icons[key]
-            icon.title = f"ProCare Imaging — {agent.state}"[:120]
+            icon.title = f"{APP_NAME} — {agent.state}"[:120]
             try:
                 icon.update_menu()
             except Exception:
@@ -276,7 +306,7 @@ def run_tray(agent: Agent) -> bool:
 
 def _safe_notify(icon, text: str) -> None:
     try:
-        icon.notify(text, "ProCare Imaging")
+        icon.notify(text, APP_NAME)
     except Exception:
         pass
 
@@ -318,8 +348,47 @@ def run_settings() -> None:
     station = load_station(HERE)
 
     root = tk.Tk()
-    root.title("ProCare Imaging — Settings")
-    root.geometry("620x560")
+    root.title(f"{APP_NAME} — Settings")
+    root.geometry("640x660")
+    root.configure(bg=BRAND["cream"])
+
+    style = ttk.Style(root)
+    try:
+        style.theme_use("clam")  # the one theme whose colours can be set on Windows
+    except tk.TclError:
+        pass
+    style.configure("TFrame", background=BRAND["cream"])
+    style.configure("TLabel", background=BRAND["cream"], foreground=BRAND["ink"], font=("Segoe UI", 10))
+    style.configure("Heading.TLabel", foreground=BRAND["gold_deep"], font=("Segoe UI", 10, "bold"))
+    style.configure("TEntry", fieldbackground="white", bordercolor="#DDD8CF", lightcolor="#DDD8CF", padding=4)
+    style.configure("TCombobox", fieldbackground="white", padding=3)
+    style.configure("TButton", background="white", foreground=BRAND["ink"], bordercolor="#DDD8CF", padding=(10, 4))
+    style.map("TButton", background=[("active", "#EFEBE3")])
+    style.configure("Save.TButton", background=BRAND["gold"], foreground=BRAND["marquina"],
+                    bordercolor=BRAND["gold"], font=("Segoe UI", 10, "bold"), padding=(16, 6))
+    style.map("Save.TButton", background=[("active", BRAND["gold_light"])])
+
+    # Header: the clinic's logo and name on the dark marble colour.
+    header = tk.Frame(root, bg=BRAND["marquina"], padx=20, pady=14)
+    header.pack(fill="x")
+    logo_image = None
+    if LOGO.exists():
+        try:
+            logo_image = tk.PhotoImage(file=str(LOGO)).subsample(2)  # 128 px -> 64 px
+            tk.Label(header, image=logo_image, bg=BRAND["marquina"]).pack(side="left", padx=(0, 12))
+            window_icon = tk.PhotoImage(file=str(LOGO))
+            root.iconphoto(True, window_icon)
+            root._icons = (logo_image, window_icon)  # Tk forgets images nothing refers to
+        except tk.TclError:
+            logo_image = None
+    titles = tk.Frame(header, bg=BRAND["marquina"])
+    titles.pack(side="left")
+    tk.Label(titles, text="British ProCare", bg=BRAND["marquina"], fg=BRAND["gold_light"],
+             font=("Georgia", 17)).pack(anchor="w")
+    tk.Label(titles, text=f"Imaging agent · settings · v{AGENT_VERSION}", bg=BRAND["marquina"],
+             fg="#B9BCC2", font=("Segoe UI", 9)).pack(anchor="w")
+    tk.Frame(root, bg=BRAND["gold"], height=2).pack(fill="x")
+
     frame = ttk.Frame(root, padding=18)
     frame.pack(fill="both", expand=True)
 
@@ -339,7 +408,7 @@ def run_settings() -> None:
 
     def heading(text):
         nonlocal row
-        ttk.Label(frame, text=text, font=("Segoe UI", 10, "bold")).grid(row=row, column=0, columnspan=3, sticky="w", pady=(10, 4))
+        ttk.Label(frame, text=text.upper(), style="Heading.TLabel").grid(row=row, column=0, columnspan=3, sticky="w", pady=(12, 4))
         row += 1
 
     def entry(label, key, browse=None, secret=False):
@@ -419,13 +488,13 @@ def run_settings() -> None:
             station_data["clinic_id"] = chosen["id"]
         write_json(HERE / "station.json", station_data)
 
-        messagebox.showinfo("Settings", "Saved. The agent picks this up within a few seconds.")
+        messagebox.showinfo(APP_NAME, "Saved. The agent picks this up within a few seconds.")
         root.destroy()
 
     buttons = ttk.Frame(frame)
     buttons.grid(row=row, column=0, columnspan=3, sticky="e", pady=(18, 0))
     ttk.Button(buttons, text="Cancel", command=root.destroy).pack(side="right", padx=(6, 0))
-    ttk.Button(buttons, text="Save", command=save).pack(side="right")
+    ttk.Button(buttons, text="Save", command=save, style="Save.TButton").pack(side="right")
 
     if fields["bridge_api_key"].get():
         root.after(200, load_clinics)

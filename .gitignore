@@ -55,3 +55,6 @@ Dental Agent/station.json
 Dental Agent/leftovers.json
 Dental Agent/session_state.json
 Dental Agent/agent.log*
+# Each clinic PC's own settings (website address, key, export folders)
+Dental Agent/config.json
+Dental Agent/old versions/

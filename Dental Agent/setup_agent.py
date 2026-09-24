@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sets up (or updates) the Dental Agent on a clinic PC.
+Sets up (or updates) British ProCare Imaging — the Dental Agent — on a clinic PC.
 
     python setup_agent.py
 
@@ -28,10 +28,21 @@ FILES = [
     "dental_agent_service.py",
     "install_service.py",
     "doctor.py",
-    # The previous windowed agent, kept as a manual fallback.
-    "dental_agent_v2.py",
 ]
+# Pictures: the clinic's tooth mark for the tray icon and settings window.
+ASSETS = ["logo_mark.png"]
 HERE = Path(__file__).resolve().parent
+OLD = HERE / "old versions"
+
+# Earlier versions of the agent and their guides. Setup moves them out of the
+# way (into "old versions", never deleted) so the folder shows only what runs.
+OBSOLETE = [
+    "dental_agent.py", "dental_agent_branded.py", "dental_agent_clean.py", "dental_agent_v2.py",
+    "install_protocol.py", "mock_server.py", "test_agent.py", "test_imaging",
+    "ASSISTANT_WORKFLOW.md", "CLINIC_SETUP_GUIDE.txt", "COMPLETE_CLINIC_SETUP.txt",
+    "DEPLOYMENT_CHECKLIST.txt", "DOCTOR_WORKFLOW.md", "QUICKSTART.md", "QUICK_START.md",
+    "RECEPTIONIST_WORKFLOW.md", "REDESIGN_SUMMARY.md",
+]
 
 
 def step(text):
@@ -65,15 +76,56 @@ def update_file(name: str) -> bool:
             print(f"  = {name} already up to date")
             return True
 
-        backup = target.with_name(
-            f"{target.stem}.backup-{datetime.now():%Y%m%d-%H%M}{target.suffix}"
-        )
+        OLD.mkdir(exist_ok=True)
+        backup = OLD / f"{target.stem}.backup-{datetime.now():%Y%m%d-%H%M}{target.suffix}"
         shutil.copy2(target, backup)
-        print(f"  . previous version saved as {backup.name}")
+        print(f"  . previous version saved in 'old versions'")
 
     target.write_bytes(payload)
     print(f"  + {name} updated ({len(payload):,} bytes)")
     return True
+
+
+def update_asset(name: str) -> bool:
+    target = HERE / name
+    try:
+        payload = fetch(name)
+    except (urllib.error.URLError, OSError) as exc:
+        print(f"  ! Could not download {name}: {exc}")
+        return target.exists()
+    if not payload.startswith(b"\x89PNG"):
+        print(f"  ! {name} did not arrive intact — skipped")
+        return target.exists()
+    if target.exists() and target.read_bytes() == payload:
+        print(f"  = {name} already up to date")
+    else:
+        target.write_bytes(payload)
+        print(f"  + {name} updated")
+    return True
+
+
+def tidy_folder() -> None:
+    """Moves earlier versions out of the way; nothing is deleted."""
+    moved = []
+    for name in OBSOLETE:
+        path = HERE / name
+        if path.exists():
+            OLD.mkdir(exist_ok=True)
+            dest = OLD / name
+            if dest.exists():
+                dest = OLD / f"{path.stem}-{datetime.now():%Y%m%d-%H%M%S}{path.suffix}"
+            shutil.move(str(path), str(dest))
+            moved.append(name)
+    # Backups left by earlier updates, and Python's cache folder.
+    for path in HERE.glob("*.backup-*"):
+        OLD.mkdir(exist_ok=True)
+        shutil.move(str(path), str(OLD / path.name))
+        moved.append(path.name)
+    shutil.rmtree(HERE / "__pycache__", ignore_errors=True)
+    if moved:
+        print(f"  + moved {len(moved)} old file(s) into 'old versions'")
+    else:
+        print("  = nothing to tidy")
 
 
 PACKAGES = {"requests": "requests", "pystray": "pystray", "PIL": "Pillow"}
@@ -123,7 +175,7 @@ def install_background() -> bool:
 
 
 def main() -> int:
-    print("ProCare Dental Agent — setup")
+    print("British ProCare Imaging — setup")
     print(f"Folder: {HERE}")
     print(f"Python: {sys.version.split()[0]} ({sys.executable})")
 
@@ -134,16 +186,21 @@ def main() -> int:
     step("Downloading the latest agent")
     print("  Close the Dental Agent first if it is open.")
     ok = all([update_file(name) for name in FILES])
+    for name in ASSETS:
+        update_asset(name)
+
+    step("Tidying the folder")
+    tidy_folder()
 
     step("Checking dependencies")
     ok = ensure_packages() and ok
 
-    step("Installing ProCare Imaging to run in the background")
+    step("Installing British ProCare Imaging to run in the background")
     ok = install_background() and ok
 
     print()
     if ok:
-        print("Setup complete. ProCare Imaging is running by the clock and will")
+        print("Setup complete. British ProCare Imaging is running by the clock and will")
         print("start by itself whenever this Windows user signs in.")
         print("Imaging is now started from the patient's page on the website.")
     else:

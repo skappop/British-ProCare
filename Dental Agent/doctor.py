@@ -125,7 +125,7 @@ def check_protocol():
             command, _ = winreg.QueryValueEx(key, "")
     except FileNotFoundError:
         bad("NOT REGISTERED on this Windows user")
-        info("fix:  python install_protocol.py")
+        info("fix:  python install_service.py")
         return
     except OSError as exc:
         bad(f"could not read the registry: {exc}")
