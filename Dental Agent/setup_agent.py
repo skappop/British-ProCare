@@ -128,7 +128,7 @@ def tidy_folder() -> None:
         print("  = nothing to tidy")
 
 
-PACKAGES = {"requests": "requests", "pystray": "pystray", "PIL": "Pillow"}
+PACKAGES = {"requests": "requests", "pystray": "pystray", "PIL": "Pillow", "numpy": "numpy", "pydicom": "pydicom"}
 
 
 def ensure_packages() -> bool:
@@ -153,8 +153,9 @@ def ensure_packages() -> bool:
         print("   ", (result.stderr or result.stdout).strip()[:400])
         if "requests" in missing:
             return False
-        # Without pystray the agent still runs, just without a tray icon.
-        print("  - continuing: the agent will run without a tray icon")
+        # Without pystray the agent still runs, just without a tray icon;
+        # without pydicom/numpy, DICOM-only X-rays go up as DICOM.
+        print("  - continuing: the agent works without these (fewer extras)")
         return True
 
     print(f"  + installed {', '.join(missing)}")

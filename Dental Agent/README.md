@@ -43,14 +43,21 @@ programs and their export folders.
 | `logo_mark.png` | The clinic's mark for the tray icon and window |
 
 Created on each PC, never shared: `config.json` and `station.json` (this PC's
-settings), `agent.log` (what it did), and while working `leftovers.json` /
-`session_state.json`.
+settings), `agent.log` (what it did, including every camera / X-ray file it
+saw), `captures/` (copies of X-ray files, kept two weeks), and while working
+`leftovers.json` / `session_state.json`.
 
 ## Images
 
 The website keeps a copy sized for viewing (at most 2400 px, JPEG). The full
 quality originals stay on this PC in One2 / EzDent-i and in the nightly
-backup. DICOM files are uploaded unchanged.
+backup.
+
+X-rays: EzDent-i writes several files per X-ray (picture, DICOM, sensor data,
+thumbnail) and may delete them again, or reuse the same names, moments later.
+The agent copies each one the moment it appears, sends one picture per X-ray,
+and never the DICOM itself: when an X-ray only comes as DICOM, it is turned
+into a JPEG for the website.
 
 ## If something is wrong
 

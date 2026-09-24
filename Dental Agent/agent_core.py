@@ -22,7 +22,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 import requests
 
-AGENT_VERSION = "3.1.0"
+AGENT_VERSION = "3.2.0"
 PROTOCOL_PORT = 47281
 
 log = logging.getLogger("procare.agent")
@@ -240,6 +240,8 @@ def web_copy(path: Path, workdir: Path) -> Path:
     `workdir`, or the original path when shrinking would not help (already
     small, not a picture Pillow can read, DICOM, or Pillow missing).
     """
+    if path.suffix.lower() == ".dcm":
+        return dicom_picture(path, workdir) or path
     if path.suffix.lower() not in SHRINKABLE:
         return path
     try:
@@ -278,6 +280,58 @@ def web_copy(path: Path, workdir: Path) -> Path:
     return out
 
 
+def dicom_picture(path: Path, workdir: Path) -> Optional[Path]:
+    """
+    A JPEG of a DICOM X-ray, for the website (browsers cannot show DICOM).
+    None when it cannot be read (pydicom/numpy missing, or a compression they
+    cannot decode): the DICOM is then sent as it is.
+    """
+    try:
+        import numpy as np
+        import pydicom
+        from PIL import Image
+    except ImportError:
+        log.info("pydicom/numpy not installed: sending %s as DICOM", path.name)
+        return None
+    try:
+        ds = pydicom.dcmread(str(path))
+        pixels = ds.pixel_array.astype("float64")
+        try:  # the contrast the sensor software chose, when it says
+            from pydicom.pixels import apply_voi_lut
+        except ImportError:
+            try:
+                from pydicom.pixel_data_handlers.util import apply_voi_lut
+            except ImportError:
+                apply_voi_lut = None
+        if apply_voi_lut is not None:
+            try:
+                pixels = apply_voi_lut(pixels, ds).astype("float64")
+            except Exception:
+                pass
+        if pixels.ndim == 3 and pixels.shape[-1] not in (3, 4):
+            pixels = pixels[0]  # several frames: the first
+        low, high = np.percentile(pixels, 0.5), np.percentile(pixels, 99.5)
+        if high <= low:
+            low, high = float(pixels.min()), float(pixels.max() or 1)
+        pixels = np.clip((pixels - low) / (high - low), 0, 1) * 255
+        if str(getattr(ds, "PhotometricInterpretation", "")).upper() == "MONOCHROME1":
+            pixels = 255 - pixels
+        im = Image.fromarray(pixels.astype("uint8"))
+        im = im.convert("RGB") if im.mode not in ("L", "RGB") else im
+        im.thumbnail((WEB_MAX_SIDE, WEB_MAX_SIDE), Image.LANCZOS)
+        out = workdir / f"{path.stem}.jpg"
+        im.save(out, "JPEG", quality=WEB_QUALITY_GREY, optimize=True)
+        log.info("Picture of DICOM %s: %s", path.name, out.name)
+        return out
+    except Exception as exc:
+        log.info("Could not turn %s into a picture (%s): sending the DICOM", path.name, exc)
+        return None
+
+
+def _ident(st: os.stat_result) -> str:
+    return f"{st.st_size}:{st.st_mtime_ns}"
+
+
 def _size(path: Path) -> Optional[int]:
     try:
         return path.stat().st_size
@@ -302,17 +356,30 @@ def is_xray_temp(name: str) -> bool:
     return "temp_iosensor" in lower or "temp_" in lower
 
 
+XRAY_PICTURE = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+
+
 def pick_best_xray(files: List[Path]) -> Optional[Path]:
-    """Same priority the agent has always used: .dcm > image > Original > Rotated."""
-    for test in (
-        lambda f: f.suffix.lower() == ".dcm",
-        lambda f: f.suffix.lower() in (".jpg", ".jpeg", ".png", ".bmp"),
-        lambda f: "original" in f.name.lower(),
-        lambda f: "rotated" in f.name.lower(),
-    ):
-        hits = sorted(f for f in files if test(f))
-        if hits:
-            return hits[0]
+    """
+    The one file of an X-ray to put on the website: a picture a browser can
+    show, not the DICOM. The processed image first, then the rotated one, then
+    the sensor's original; the largest (full size) of equals. A DICOM only
+    when there is no picture (it is turned into a JPEG for the website).
+    Sensor raw data and thumbnails are never sent.
+    """
+    def size(f: Path) -> int:
+        return _size(f) or 0
+
+    pictures = [f for f in files if f.suffix.lower() in XRAY_PICTURE and "thumb" not in f.name.lower()]
+    if pictures:
+        def rank(f: Path):
+            name = f.name.lower()
+            kind = 2 if "original" in name else 1 if "rotated" in name else 0
+            return (kind, -size(f), f.name)
+        return sorted(pictures, key=rank)[0]
+    dicoms = [f for f in files if f.suffix.lower() == ".dcm"]
+    if dicoms:
+        return sorted(dicoms, key=lambda f: (-size(f), f.name))[0]
     return None
 
 
@@ -320,11 +387,15 @@ class CaptureWatcher:
     """
     Decides when a new capture is ready to upload.
 
-    Intraoral photos go as soon as the file has stopped growing. EzDent-i
-    writes several temporary files per X-ray, so those are grouped by the
-    timestamp in their names and one best file is sent once the group has
-    been quiet for a few seconds — uploading each file as it appeared would
-    put every X-ray in the gallery several times over.
+    Intraoral photos go as soon as the file has stopped growing.
+
+    EzDent-i writes several temporary files per X-ray (picture, DICOM, raw,
+    thumbnail), may delete them again moments later, and may reuse the same
+    file names for the next X-ray. So X-ray files are copied into this PC's
+    hold folder the moment they appear (and again whenever they change), the
+    copies of one X-ray are grouped, and one best picture per X-ray is sent
+    once its group has been quiet for a few seconds. A file rewritten under
+    the same name after its X-ray was sent is a new X-ray.
     """
 
     def __init__(
@@ -336,6 +407,7 @@ class CaptureWatcher:
         clock: Callable[[], float] = time.time,
         already_sent: Iterable[str] = (),
         baseline: Iterable[str] = (),
+        hold_dir: Optional[Path] = None,
     ):
         self.folders = [Path(f) for f in folders if f]
         self.since = since
@@ -343,13 +415,26 @@ class CaptureWatcher:
         # someone else's session, whatever their timestamps say — relying on
         # time alone let the previous patient's last capture leak into the next
         # patient's chart when sessions ran back to back.
-        self.baseline = set(baseline)
+        # "path\tsize\tmtime" entries: a file rewritten since (same name, new
+        # content) is new. Plain paths (older saved state) mean "ignore it".
+        self.baseline: Dict[str, Optional[str]] = {}
+        for entry in baseline:
+            path, _, ident = entry.partition("\t")
+            self.baseline[path] = ident or None
         self.stable = stable_seconds
         self.settle = settle_seconds
         self.clock = clock
         self.sent = set(already_sent)  # absolute paths already handed out
         self.seen: Dict[str, Tuple[int, float]] = {}  # path -> (size, last change)
         self.done_groups = set()
+        # X-rays: where copies are kept (None: use the files where they are).
+        self.hold_dir = Path(hold_dir) if hold_dir else None
+        if self.hold_dir:
+            self.hold_dir.mkdir(parents=True, exist_ok=True)
+        self.held: Dict[str, Tuple[Tuple[int, int], Path, str]] = {}  # source -> (identity, copy, group)
+        self.xgroups: Dict[str, Dict] = {}  # group -> {"files": {source: copy}, "last": clock}
+        self.open_group: Dict[str, str] = {}  # group base -> the group still collecting
+        self._copies = 0
 
     def _new_files(self) -> List[Path]:
         found = []
@@ -359,11 +444,20 @@ class CaptureWatcher:
             except OSError:
                 continue
             for path in entries:
-                if str(path) in self.baseline:
-                    continue
                 try:
-                    if path.is_file() and os.path.getctime(path) >= self.since:
-                        found.append(path)
+                    if not path.is_file():
+                        continue
+                    st = path.stat()
+                    key = str(path)
+                    if key in self.baseline:
+                        known = self.baseline[key]
+                        if known is None or known == _ident(st):
+                            continue  # there before the session, unchanged
+                    # Creation time, or modification time for a file overwritten
+                    # under an old name (Windows keeps the creation time).
+                    elif max(st.st_ctime, st.st_mtime) < self.since:
+                        continue
+                    found.append(path)
                 except OSError:
                     continue
         return found
@@ -383,17 +477,73 @@ class CaptureWatcher:
         entry = self.seen.get(str(path))
         return self.clock() - entry[1] if entry else 0.0
 
-    def _groups(self, files: List[Path]) -> Dict[str, List[Path]]:
-        groups: Dict[str, List[Path]] = {}
+    def _group_base(self, path: Path) -> str:
+        match = XRAY_TIMESTAMP_RE.search(path.name)
+        return f"{path.parent}|{match.group(1)}" if match else f"{path.parent}|-"
+
+    def grab(self, files: Optional[List[Path]] = None) -> None:
+        """
+        Copy new or changed X-ray files into the hold folder now. Called on
+        every scan, and between scans by the service, so a file EzDent-i
+        deletes a second after writing it is still caught.
+        """
+        if files is None:
+            files = self._new_files()
+        now = self.clock()
         for path in files:
             lower = path.name.lower()
-            if any(skip in lower for skip in ("thumbnail", ".tag", "_tag_")):
+            if not is_xray_temp(path.name) or any(skip in lower for skip in (".tag", "_tag_")):
                 continue
-            match = XRAY_TIMESTAMP_RE.search(path.name)
-            if match:
-                key = f"{path.parent}|{match.group(1)}"
-                groups.setdefault(key, []).append(path)
-        return groups
+            try:
+                st = path.stat()
+            except OSError:
+                continue
+            if st.st_size == 0:
+                continue
+            identity = (st.st_size, st.st_mtime_ns)
+            key = str(path)
+            previous = self.held.get(key)
+            if previous and previous[0] == identity:
+                continue
+
+            # Still being written (its X-ray not yet sent): same group, same copy.
+            # Otherwise it is a new X-ray, even under a name used before.
+            if previous and previous[2] not in self.done_groups:
+                group, copy = previous[2], previous[1]
+            else:
+                base = self._group_base(path)
+                group = self.open_group.get(base)
+                if not group or group in self.done_groups:
+                    group = base if base not in self.xgroups else f"{base}#{len(self.xgroups)}"
+                    self.open_group[base] = group
+                    self.xgroups[group] = {"files": {}, "last": now}
+                copy = self._hold_path(path)
+            if not self._copy(path, copy):
+                continue
+            if not previous or previous[1] != copy:
+                log.info("X-ray file %s (%d bytes)", path.name, st.st_size)
+            self.held[key] = (identity, copy, group)
+            self.xgroups[group]["files"][key] = copy
+            self.xgroups[group]["last"] = now
+
+    def _hold_path(self, path: Path) -> Path:
+        if not self.hold_dir:
+            return path
+        # One folder per copy, so the file keeps EzDent-i's own name.
+        self._copies += 1
+        folder = self.hold_dir / f"{int(time.time())}_{self._copies:04d}"
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder / path.name
+
+    def _copy(self, source: Path, copy: Path) -> bool:
+        if copy == source:
+            return True
+        try:
+            shutil.copy2(source, copy)
+            return True
+        except OSError as exc:  # locked while being written, or already gone
+            log.info("could not copy %s yet (%s)", source.name, exc)
+            return False
 
     def _collect(self, force: bool) -> List[Path]:
         files = self._new_files()
@@ -406,18 +556,25 @@ class CaptureWatcher:
                 continue
             if force or self._quiet_for(path) >= self.stable:
                 self.sent.add(str(path))
+                log.info("photo ready: %s (%d bytes)", path.name, _size(path) or 0)
                 ready.append(path)
 
-        for key, members in self._groups([f for f in files if is_xray_temp(f.name)]).items():
+        self.grab(files)
+        for key, group in self.xgroups.items():
             if key in self.done_groups:
                 continue
-            quiet = min(self._quiet_for(m) for m in members)
-            if not force and quiet < self.settle:
+            if not force and self.clock() - group["last"] < self.settle:
                 continue
-            best = pick_best_xray(members)
             self.done_groups.add(key)
-            if best and str(best) not in self.sent:
-                self.sent.add(str(best))
+            members = list(group["files"].values())
+            best = pick_best_xray(members)
+            if not best:
+                log.warning("X-ray with no picture or DICOM to send: %s", ", ".join(p.name for p in members))
+                continue
+            sent_as = f"{key}|{best}"
+            if sent_as not in self.sent:
+                self.sent.add(sent_as)
+                log.info("X-ray ready: %s (from %d file(s))", best.name, len(members))
                 ready.append(best)
 
         return ready
@@ -436,11 +593,15 @@ class CaptureWatcher:
 
     @staticmethod
     def snapshot(folders: Iterable[Path]) -> List[str]:
-        """Every file currently in the folders."""
+        """Every file currently in the folders, with its size and time."""
         found = []
         for folder in folders:
             try:
-                found.extend(str(p) for p in Path(folder).iterdir())
+                for p in Path(folder).iterdir():
+                    try:
+                        found.append(f"{p}\t{_ident(p.stat())}")
+                    except OSError:
+                        found.append(str(p))
             except OSError:
                 continue
         return found
@@ -516,6 +677,19 @@ class SessionRunner:
     def id(self) -> str:
         return self.session["id"]
 
+    def _hold_dir(self) -> Path:
+        """Copies of X-ray files, kept two weeks (the originals stay in EzDent-i)."""
+        hold = self.folder / "captures"
+        try:
+            hold.mkdir(exist_ok=True)
+            cutoff = time.time() - 14 * 86400
+            for old in hold.iterdir():
+                if old.stat().st_mtime < cutoff:
+                    shutil.rmtree(old, ignore_errors=True) if old.is_dir() else old.unlink()
+        except OSError:
+            pass
+        return hold
+
     def _state_path(self) -> Path:
         return self.folder / "session_state.json"
 
@@ -526,7 +700,7 @@ class SessionRunner:
             "mode": self.session["mode"],
             "since": self.watcher.since if self.watcher else self.clock(),
             "sent": sorted(self.watcher.sent) if self.watcher else [],
-            "baseline": sorted(self.watcher.baseline) if self.watcher else [],
+            "baseline": sorted(f"{p}\t{i}" if i else p for p, i in self.watcher.baseline.items()) if self.watcher else [],
             "uploaded": self.uploaded,
         })
 
@@ -587,7 +761,8 @@ class SessionRunner:
         if resume:
             self.watcher = CaptureWatcher(self._folders(), since=resume["since"], clock=self.clock,
                                           already_sent=resume.get("sent", []),
-                                          baseline=resume.get("baseline", []))
+                                          baseline=resume.get("baseline", []),
+                                          hold_dir=self._hold_dir())
             self.uploaded = resume.get("uploaded", 0)
             log.info("resumed session %s after a restart", self.id)
             return True
@@ -605,7 +780,8 @@ class SessionRunner:
         # before the software below is opened.
         folders = self._folders()
         self.watcher = CaptureWatcher(folders, since=time.time(), clock=self.clock,
-                                      baseline=CaptureWatcher.snapshot(folders))
+                                      baseline=CaptureWatcher.snapshot(folders),
+                                      hold_dir=self._hold_dir())
         self.pending = self._take_leftovers()
 
         started = self._report(status="active", message=None)

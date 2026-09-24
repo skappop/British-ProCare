@@ -221,8 +221,26 @@ class Agent:
                 log.exception("unexpected error in the agent loop")
                 self.state = "Error — see agent.log"
                 delay = 5.0
-            self.stop.wait(delay)
+            self._wait(delay)
         log.info("ProCare Imaging stopped")
+
+    def _wait(self, delay: float) -> None:
+        """
+        Wait for the next heartbeat, but during imaging keep copying new X-ray
+        files every 0.3 s: EzDent-i can delete its files within a second or two.
+        """
+        end = time.monotonic() + delay
+        while not self.stop.is_set():
+            left = end - time.monotonic()
+            if left <= 0:
+                return
+            runner = self.runner
+            if runner is not None and runner.watcher is not None:
+                try:
+                    runner.watcher.grab()
+                except Exception:  # noqa: BLE001 - never stop the loop for this
+                    log.exception("could not check for new X-ray files")
+            self.stop.wait(min(0.3, left))
 
 
 # ---------------------------------------------------------------------------
