@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import LiveRefresh from '@/components/LiveRefresh'
 import ReceptionFlow from './ReceptionFlow'
 import type { Procedure, ReceptionPatient, TodayAppointment } from './types'
 
@@ -57,11 +58,17 @@ export default async function ReceptionPage({
   }))
 
   return (
-    <ReceptionFlow
-      procedures={(procedures as Procedure[]) || []}
-      todayAppointments={todayAppointments}
-      initialPatient={initialPatient}
-      initialAppointmentId={initialPatient ? apptParam || null : null}
-    />
+    <>
+      {/* The "Booked today" list updates itself as the doctors mark people seen. */}
+      <div className="flex justify-end -mb-2">
+        <LiveRefresh tables={['appointments', 'payments']} />
+      </div>
+      <ReceptionFlow
+        procedures={(procedures as Procedure[]) || []}
+        todayAppointments={todayAppointments}
+        initialPatient={initialPatient}
+        initialAppointmentId={initialPatient ? apptParam || null : null}
+      />
+    </>
   )
 }

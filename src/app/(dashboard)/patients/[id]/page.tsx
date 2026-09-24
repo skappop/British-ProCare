@@ -54,7 +54,7 @@ export default async function PatientProfilePage({
   const showBillingLink = await canHandleMoney()
 
   // Today's visit and what's booked next, for the doctor to run from here.
-  const { currentVisit, currentClinicId, upcoming } = await getVisitState(id)
+  const { currentVisit, currentClinicId, seenToday, upcoming } = await getVisitState(id)
   const clinicList = (await getClinics()).map((c) => ({ id: c.id, name: c.name }))
   const suggestedWeeks =
     Number((visits?.[0] as { ortho_quick_log?: { next_visit_weeks?: number } } | undefined)?.ortho_quick_log?.next_visit_weeks) || null
@@ -94,6 +94,41 @@ export default async function PatientProfilePage({
     .select('*')
     .eq('patient_id', id)
     .order('sent_at', { ascending: false })
+
+  const recentVisits = (visits ?? []).slice(0, 5)
+  const olderVisits = (visits ?? []).slice(5)
+  const renderVisit = (v: any) => (
+    <div key={v.id} className="px-4 py-3">
+      <div className="flex justify-between text-sm">
+        <span className="font-mono text-ink/70">
+          {new Date(v.visit_date).toLocaleDateString()}
+        </span>
+      </div>
+
+      {v.visit_procedures?.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {v.visit_procedures.map((vp: any, i: number) => (
+            <span
+              key={i}
+              className="bg-teal/10 text-teal-deep text-xs px-2 py-1 rounded-full"
+            >
+              {vp.procedures?.name}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {formatQuickLog(v.ortho_quick_log).length > 0 && (
+        <div className="text-xs text-ink/50 font-mono mt-2 space-y-0.5">
+          {formatQuickLog(v.ortho_quick_log).map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
+        </div>
+      )}
+
+      {v.notes && <p className="text-sm text-ink/60 mt-2">{v.notes}</p>}
+    </div>
+  )
 
   return (
     <div className="space-y-6">
@@ -171,6 +206,7 @@ export default async function PatientProfilePage({
       <VisitPanel
         patientId={id}
         current={currentVisit}
+        seenToday={seenToday}
         upcoming={upcoming}
         clinics={clinicList}
         defaultClinicId={currentClinicId}
@@ -178,8 +214,6 @@ export default async function PatientProfilePage({
       />
 
       <ImagingPanel patientId={id} />
-
-      <LogVisitForm patientId={id} procedures={procedures || []} isOrtho={patient.is_ortho} />
 
       <Odontogram patientId={id} initialOdontogram={patient.odontogram || {}} />
 
@@ -197,44 +231,29 @@ export default async function PatientProfilePage({
       <div>
         <h2 className="font-display text-lg text-ink-strong mb-3">Visit History</h2>
         <div className="bg-white rounded-card shadow-soft divide-y divide-ink/5">
-          {visits?.map((v: any) => (
-            <div key={v.id} className="px-4 py-3">
-              <div className="flex justify-between text-sm">
-                <span className="font-mono text-ink/70">
-                  {new Date(v.visit_date).toLocaleDateString()}
-                </span>
-              </div>
-
-              {v.visit_procedures?.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {v.visit_procedures.map((vp: any, i: number) => (
-                    <span
-                      key={i}
-                      className="bg-teal/10 text-teal-deep text-xs px-2 py-1 rounded-full"
-                    >
-                      {vp.procedures?.name}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {formatQuickLog(v.ortho_quick_log).length > 0 && (
-                <div className="text-xs text-ink/50 font-mono mt-2 space-y-0.5">
-                  {formatQuickLog(v.ortho_quick_log).map((line, i) => (
-                    <div key={i}>{line}</div>
-                  ))}
-                </div>
-              )}
-
-              {v.notes && <p className="text-sm text-ink/60 mt-2">{v.notes}</p>}
-            </div>
-          ))}
+          {recentVisits.map(renderVisit)}
+          {olderVisits.length > 0 && (
+            <details className="group">
+              <summary className="px-4 py-3 text-sm text-teal-deep cursor-pointer hover:underline list-none">
+                Show {olderVisits.length} earlier visit{olderVisits.length === 1 ? '' : 's'}
+              </summary>
+              <div className="divide-y divide-ink/5 border-t border-ink/5">{olderVisits.map(renderVisit)}</div>
+            </details>
+          )}
           {(!visits || visits.length === 0) && (
             <div className="px-4 py-8 text-center text-ink/40 text-sm">No visits yet.</div>
           )}
         </div>
       </div>
 
+      {/* Last on the page on purpose: work through the patient, then save —
+          and saving marks them seen and hands them to reception. */}
+      <LogVisitForm
+        patientId={id}
+        procedures={procedures || []}
+        isOrtho={patient.is_ortho}
+        finishesVisit={!!currentVisit}
+      />
     </div>
   )
 }

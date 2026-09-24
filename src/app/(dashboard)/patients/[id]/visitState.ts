@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { CurrentVisit, Upcoming } from './VisitPanel'
+import type { CurrentVisit, SeenVisit, Upcoming } from './VisitPanel'
 
 type ApptRow = {
   id: string
@@ -21,6 +21,7 @@ type ApptRow = {
 export async function getVisitState(patientId: string): Promise<{
   currentVisit: CurrentVisit | null
   currentClinicId: string | null
+  seenToday: SeenVisit | null
   upcoming: Upcoming[]
 }> {
   const supabase = await createClient()
@@ -30,7 +31,7 @@ export async function getVisitState(patientId: string): Promise<{
     .from('appointments')
     .select('id, status, scheduled_at, arrived_at, seated_at, notes, duration_minutes, clinic_id, clinics(name)')
     .eq('patient_id', patientId)
-    .in('status', ['scheduled', 'arrived', 'in_chair'])
+    .in('status', ['scheduled', 'arrived', 'in_chair', 'completed'])
     .gte('scheduled_at', new Date(now - 18 * 3600_000).toISOString())
     .order('scheduled_at', { ascending: true })
     .limit(10)
@@ -45,6 +46,10 @@ export async function getVisitState(patientId: string): Promise<{
     (a) => a.status === 'scheduled' && Math.abs(new Date(a.scheduled_at).getTime() - now) < 12 * 3600_000
   )
   const current = live ?? bookedToday ?? null
+  // Finished today (only matters when nothing else is open for them).
+  const seen = current
+    ? null
+    : [...appts].reverse().find((a) => a.status === 'completed' && new Date(a.scheduled_at).getTime() <= now + 3600_000)
 
   return {
     currentVisit: current
@@ -58,7 +63,8 @@ export async function getVisitState(patientId: string): Promise<{
           notes: current.notes,
         }
       : null,
-    currentClinicId: current?.clinic_id ?? null,
+    currentClinicId: current?.clinic_id ?? seen?.clinic_id ?? null,
+    seenToday: seen ? { id: seen.id, clinic: seen.clinic } : null,
     upcoming: appts
       .filter((a) => a.status === 'scheduled' && a.id !== current?.id && new Date(a.scheduled_at).getTime() > now)
       .slice(0, 3)

@@ -6,6 +6,7 @@ import DayBoard, { type BoardAppointment } from './DayBoard'
 import ClinicSwitcher from '@/components/ClinicSwitcher'
 import LiveRefresh from '@/components/LiveRefresh'
 import { getClinics } from '@/lib/clinics'
+import { canHandleMoney } from '@/lib/auth/role'
 
 function startOfDay(d: Date) {
   const x = new Date(d)
@@ -89,12 +90,29 @@ export default async function AppointmentsPage({
       : null,
   }))
 
-  const count = (s: string) => dayAppts.filter((a) => a.status === s).length
+  // Seen patients get their outstanding balance, so reception can tell at a
+  // glance who still has to pay. Money figures only for staff who take money.
+  const canTakePayment = await canHandleMoney()
+  const seenIds = [...new Set(dayAppts.filter((a) => a.status === 'completed' && a.patients).map((a) => a.patients!.id))]
+  if (canTakePayment && seenIds.length > 0) {
+    const { data: balances } = await supabase
+      .from('patient_balances')
+      .select('patient_id, balance')
+      .in('patient_id', seenIds)
+    const due = new Map((balances ?? []).map((b) => [b.patient_id as string, Number(b.balance) || 0] as const))
+    for (const a of dayAppts) {
+      if (a.status === 'completed' && a.patients) a.balance_due = due.get(a.patients.id) ?? 0
+    }
+  }
+
+  const count = (...statuses: string[]) => dayAppts.filter((a) => statuses.includes(a.status)).length
   const summary = [
     { label: 'Booked', value: count('scheduled'), cls: 'text-ink/60' },
-    { label: 'Waiting', value: count('arrived'), cls: 'text-gold-deep' },
-    { label: 'In chair', value: count('in_chair'), cls: 'text-teal-deep' },
-    { label: 'Done', value: count('completed'), cls: 'text-success' },
+    { label: 'Here', value: count('arrived', 'in_chair'), cls: 'text-gold-deep' },
+    { label: 'Seen', value: count('completed'), cls: 'text-success' },
+    ...(canTakePayment
+      ? [{ label: 'To pay', value: dayAppts.filter((a) => (a.balance_due ?? 0) > 0).length, cls: 'text-danger' }]
+      : []),
   ]
 
   const prevDate = toDateStr(addDays(anchor, view === 'week' ? -7 : -1))
@@ -170,7 +188,7 @@ export default async function AppointmentsPage({
       {view === 'day' ? (
         <>
           {/* Summary strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className={`grid grid-cols-2 gap-3 ${summary.length === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
             {summary.map((s) => (
               <div key={s.label} className="bg-white rounded-card shadow-soft px-4 py-3">
                 <p className="text-[10px] uppercase tracking-wider text-ink/40 font-mono">{s.label}</p>
@@ -184,7 +202,7 @@ export default async function AppointmentsPage({
               {isToday ? 'No one booked today yet.' : 'No appointments on this day.'}
             </div>
           ) : (
-            <DayBoard appointments={dayAppts} />
+            <DayBoard appointments={dayAppts} canTakePayment={canTakePayment} />
           )}
 
           {/* Booking */}

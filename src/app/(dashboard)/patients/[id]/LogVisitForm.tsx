@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useTransition, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import { CheckCircle2 } from 'lucide-react'
+import { useStoredValue } from '@/lib/useStoredValue'
 import { logVisit, getLastQuickLog, getBomPreview, getLastVisitSetup } from './actions'
 import OrthoQuickLog, { QuickLogData } from './OrthoQuickLog'
 
@@ -35,11 +38,17 @@ export default function LogVisitForm({
   patientId,
   procedures,
   isOrtho,
+  finishesVisit = false,
 }: {
   patientId: string
   procedures: Procedure[]
   isOrtho: boolean
+  /** The patient is on today's list, so saving also marks them seen. */
+  finishesVisit?: boolean
 }) {
+  const router = useRouter()
+  // The clinic this device works in, for a walk-in with no booking.
+  const [clinic] = useStoredValue('procare.clinic')
   const [isPending, startTransition] = useTransition()
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -82,6 +91,7 @@ export default function LogVisitForm({
   function handleSubmit(formData: FormData) {
     selectedIds.forEach((id) => formData.append('procedure_ids', id))
     formData.set('patient_id', patientId)
+    if (clinic) formData.set('clinic_id', clinic)
     if (quickLogData) formData.set('quick_log', JSON.stringify(quickLogData))
 
     startTransition(async () => {
@@ -91,14 +101,15 @@ export default function LogVisitForm({
         setSelectedIds([])
         const form = document.getElementById('log-visit-form') as HTMLFormElement
         form?.reset()
+        router.refresh()
       }
     })
   }
 
   return (
-    <div className="bg-white rounded-card shadow-soft p-6">
+    <div id="treatment" className="bg-white rounded-card shadow-soft p-6 scroll-mt-6 border-t-4 border-teal">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-display text-lg text-ink-strong">Log Visit</h2>
+        <h2 className="font-display text-lg text-ink-strong">Today&apos;s treatment</h2>
         {hasLastVisit && (
           <button
             type="button"
@@ -109,12 +120,6 @@ export default function LogVisitForm({
           </button>
         )}
       </div>
-
-      {result && (
-        <div className={`text-sm px-4 py-3 rounded-control mb-4 ${result.ok ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
-          {result.message}
-        </div>
-      )}
 
       <form id="log-visit-form" action={handleSubmit} className="space-y-5">
         <div className="space-y-4">
@@ -181,13 +186,33 @@ export default function LogVisitForm({
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={isPending || selectedIds.length === 0 || stockProblem}
-          className="bg-teal hover:bg-teal-deep disabled:bg-ink/20 disabled:cursor-not-allowed text-white text-sm px-5 py-2.5 rounded-control transition-colors"
-        >
-          {isPending ? 'Saving...' : stockProblem ? 'Insufficient Stock' : 'Save Visit'}
-        </button>
+        {result && (
+          <div className={`text-sm px-4 py-3 rounded-control ${result.ok ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
+            {result.message}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            type="submit"
+            disabled={isPending || selectedIds.length === 0 || stockProblem}
+            className="inline-flex items-center gap-2 bg-teal hover:bg-teal-deep disabled:bg-ink/20 disabled:cursor-not-allowed text-white text-sm font-medium px-5 py-2.5 rounded-control transition-colors"
+          >
+            <CheckCircle2 size={16} />
+            {isPending
+              ? 'Saving…'
+              : stockProblem
+                ? 'Insufficient stock'
+                : finishesVisit
+                  ? 'Save visit & finish'
+                  : 'Save visit'}
+          </button>
+          <span className="text-xs text-ink/45">
+            {selectedIds.length === 0
+              ? 'Pick at least one procedure.'
+              : 'Saving marks the patient as seen and sends them to reception for payment.'}
+          </span>
+        </div>
       </form>
     </div>
   )

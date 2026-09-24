@@ -13,7 +13,7 @@ export default async function PatientsPage({
   const { q } = await searchParams
   const supabase = await createClient()
   const showBilling = await canHandleMoney()
-  const waiting = await getWaitingNow()
+  const waiting = await getWaitingNow(showBilling)
 
   let query = supabase.from('patients').select('*').order('created_at', { ascending: false })
   if (q) {
@@ -46,7 +46,7 @@ export default async function PatientsPage({
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <h1 className="font-display text-2xl text-ink-strong">Patients</h1>
-          <LiveRefresh tables={['patients', 'appointments']} />
+          <LiveRefresh tables={['patients', 'appointments', 'payments']} />
         </div>
         <Link
           href="/patients/new"

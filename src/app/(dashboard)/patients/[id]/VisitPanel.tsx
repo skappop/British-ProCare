@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Armchair, CalendarPlus, CheckCircle2, Clock } from 'lucide-react'
+import { CalendarPlus, CheckCircle2, Clock, Stethoscope } from 'lucide-react'
 import { createAppointment, updateAppointmentStatus } from '../../appointments/actions'
 import { localDateTimeToIso } from '@/lib/utils'
 
@@ -15,6 +15,8 @@ export type CurrentVisit = {
   clinic: string | null
   notes: string | null
 }
+
+export type SeenVisit = { id: string; clinic: string | null }
 
 export type Upcoming = { id: string; scheduled_at: string; clinic: string | null; duration_minutes: number }
 
@@ -33,13 +35,14 @@ function isoDate(d: Date) {
 }
 
 /**
- * Today's visit and the next one, on the patient's page — so the doctor seats
- * the patient, finishes the visit and books the follow-up without going to the
- * appointments board.
+ * Today's visit and the next one, on the patient's page. There is no seating
+ * step: the patient is either here or seen, and saving the treatment at the
+ * bottom of the page is what marks them seen. The follow-up is booked here too.
  */
 export default function VisitPanel({
   patientId,
   current,
+  seenToday,
   upcoming,
   clinics,
   defaultClinicId,
@@ -47,6 +50,7 @@ export default function VisitPanel({
 }: {
   patientId: string
   current: CurrentVisit | null
+  seenToday: SeenVisit | null
   upcoming: Upcoming[]
   clinics: { id: string; name: string }[]
   defaultClinicId: string | null
@@ -68,11 +72,14 @@ export default function VisitPanel({
     return () => clearInterval(t)
   }, [])
 
-  function setStatus(status: 'in_chair' | 'completed') {
+  // For a visit with nothing to record (a consultation, a check): the usual
+  // way to finish is saving the treatment at the bottom of the page.
+  function markSeen() {
     if (!current) return
+    if (!confirm('Mark as seen without saving any treatment?\n\nReception will see them as ready for payment.')) return
     setMessage(null)
     startTransition(async () => {
-      const res = await updateAppointmentStatus(current.id, status)
+      const res = await updateAppointmentStatus(current.id, 'completed')
       if (!res?.ok) setMessage({ ok: false, text: res?.message || 'Could not update the visit' })
       router.refresh()
     })
@@ -120,32 +127,26 @@ export default function VisitPanel({
                 current.status === 'in_chair' ? 'bg-teal/10 text-teal-deep' : 'bg-gold/15 text-gold-deep'
               }`}
             >
-              {current.status === 'in_chair' ? <Armchair size={13} /> : <Clock size={13} />}
+              {current.status === 'in_chair' ? <Stethoscope size={13} /> : <Clock size={13} />}
               {current.status === 'in_chair'
-                ? `In chair · ${mins(current.seated_at, now)} min`
-                : `Waiting · ${mins(current.arrived_at, now)} min`}
+                ? `With the doctor · ${mins(current.seated_at ?? current.arrived_at, now)} min`
+                : `Here · waiting ${mins(current.arrived_at, now)} min`}
             </span>
             {current.clinic && <span className="text-xs text-ink/45">{current.clinic}</span>}
           </div>
-          {current.status === 'arrived' ? (
+          <div className="flex items-center gap-3">
+            <a href="#treatment" className="text-sm text-teal-deep hover:underline">
+              Record treatment ↓
+            </a>
             <button
               type="button"
-              onClick={() => setStatus('in_chair')}
+              onClick={markSeen}
               disabled={isPending}
-              className="inline-flex items-center gap-2 rounded-control bg-teal hover:bg-teal-deep text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+              className="text-xs text-ink/45 hover:text-ink-strong disabled:opacity-50"
             >
-              <Armchair size={15} /> Seat patient
+              Mark seen, nothing to record
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setStatus('completed')}
-              disabled={isPending}
-              className="inline-flex items-center gap-2 rounded-control bg-ink-strong hover:bg-ink text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
-            >
-              <CheckCircle2 size={15} /> Finish visit
-            </button>
-          )}
+          </div>
           {current.notes && <p className="basis-full text-sm text-ink/60">{current.notes}</p>}
         </div>
       ) : current ? (
@@ -156,6 +157,15 @@ export default function VisitPanel({
           </span>
           {current.clinic ? ` · ${current.clinic}` : ''} — not checked in yet.
         </p>
+      ) : seenToday ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 text-success px-3 py-1 text-xs font-semibold">
+            <CheckCircle2 size={14} /> Seen today
+          </span>
+          <span className="text-sm text-ink/50">
+            {seenToday.clinic ? `${seenToday.clinic} · ` : ''}with reception for payment
+          </span>
+        </div>
       ) : null}
 
       <div>

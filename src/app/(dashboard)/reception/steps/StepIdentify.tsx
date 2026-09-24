@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Search, UserPlus, CalendarClock, Phone, Hash } from 'lucide-react'
+import Link from 'next/link'
+import { Search, UserPlus, CalendarClock, Phone, Hash, CheckCircle2, Wallet } from 'lucide-react'
 import type { ReceptionPatient, TodayAppointment } from '../types'
 import { searchWalkInPatients, quickCreatePatient } from '../receptionActions'
 import { StepCard, PrimaryButton, GhostButton, Field, inputClass, inputMonoClass, SectionLabel } from '../ui'
@@ -52,7 +53,7 @@ export default function StepIdentify({
   }, [query, mode])
 
   const waiting = todayAppointments.filter(
-    (a) => a.patient && a.status !== 'cancelled'
+    (a) => a.patient && a.status !== 'cancelled' && a.status !== 'no_show'
   )
 
   function handleCreate() {
@@ -88,7 +89,25 @@ export default function StepIdentify({
             <div className="space-y-2.5">
               <SectionLabel>Booked today</SectionLabel>
               <div className="grid sm:grid-cols-2 gap-2.5">
-                {waiting.map((a) => (
+                {waiting.map((a) =>
+                  a.status === 'completed' && a.patient ? (
+                    // Seen by the doctor: the only thing left is payment.
+                    <Link
+                      key={a.id}
+                      href={`/patients/${a.patient.id}/billing`}
+                      className="flex items-center gap-3 rounded-control border border-success/40 border-l-4 border-l-success bg-success/[0.07] px-3.5 py-3 text-left hover:bg-success/[0.12] transition-colors"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success text-white">
+                        <CheckCircle2 size={17} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm text-ink-strong font-medium truncate">{a.patient.full_name}</span>
+                        <span className="flex items-center gap-1 text-xs text-gold-deep font-medium">
+                          <Wallet size={12} /> Seen · take payment
+                        </span>
+                      </span>
+                    </Link>
+                  ) : (
                   <button
                     key={a.id}
                     type="button"
@@ -107,11 +126,12 @@ export default function StepIdentify({
                       </span>
                       <span className="block text-xs text-ink/45 font-mono">
                         {timeOf(a.scheduled_at)}
-                        {a.status === 'completed' ? ' · seen' : ''}
+                        {a.status === 'arrived' || a.status === 'in_chair' ? ' · here' : ''}
                       </span>
                     </span>
                   </button>
-                ))}
+                  )
+                )}
               </div>
             </div>
           )}

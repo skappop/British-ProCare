@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   LogIn,
-  Armchair,
   CheckCircle2,
   Stethoscope,
   UserRound,
@@ -27,6 +26,8 @@ export type BoardAppointment = {
   seated_at: string | null
   clinic_id?: string | null
   clinic_name?: string | null
+  /** Seen patients only, for staff who take money: what the patient still owes overall. */
+  balance_due?: number | null
   patients: { id: string; full_name: string; phone: string | null; is_ortho: boolean } | null
 }
 
@@ -39,38 +40,73 @@ function minsSince(iso: string | null, nowMs: number): number | null {
   return Math.max(0, Math.floor((nowMs - new Date(iso).getTime()) / 60000))
 }
 
-type LaneKey = 'scheduled' | 'arrived' | 'in_chair' | 'completed'
+// No separate "in chair" lane: a patient is booked, here, or seen. Saving the
+// treatment on the patient's page is what moves them to Seen. Older rows
+// marked in_chair simply sit with the others who are here.
+type LaneKey = 'scheduled' | 'here' | 'completed'
 
-const LANES: { key: LaneKey; label: string; tint: string; head: string }[] = [
-  { key: 'scheduled', label: 'Scheduled', tint: 'bg-ink/[0.03]', head: 'text-ink/55' },
-  { key: 'arrived', label: 'Waiting', tint: 'bg-gold/[0.06]', head: 'text-gold-deep' },
-  { key: 'in_chair', label: 'In chair', tint: 'bg-teal/[0.07]', head: 'text-teal-deep' },
-  { key: 'completed', label: 'Done', tint: 'bg-success/[0.06]', head: 'text-success' },
+const LANES: { key: LaneKey; label: string; statuses: string[]; tint: string; head: string }[] = [
+  { key: 'scheduled', label: 'Booked', statuses: ['scheduled'], tint: 'bg-ink/[0.03]', head: 'text-ink/55' },
+  { key: 'here', label: 'Here', statuses: ['arrived', 'in_chair'], tint: 'bg-gold/[0.06]', head: 'text-gold-deep' },
+  { key: 'completed', label: 'Seen', statuses: ['completed'], tint: 'bg-success/[0.08]', head: 'text-success' },
 ]
+
+function money(n: number) {
+  return `EGP ${Math.round(n).toLocaleString()}`
+}
 
 function Card({
   appt,
   nowMs,
+  canTakePayment,
   onStatus,
   onRemove,
   pending,
 }: {
   appt: BoardAppointment
   nowMs: number
+  canTakePayment: boolean
   onStatus: (id: string, status: string) => void
   onRemove: (id: string) => void
   pending: boolean
 }) {
   const name = appt.patients?.full_name || 'Unknown patient'
   const wait =
-    appt.status === 'arrived'
-      ? minsSince(appt.arrived_at, nowMs)
-      : appt.status === 'in_chair'
-        ? minsSince(appt.seated_at, nowMs)
-        : null
+    appt.status === 'arrived' || appt.status === 'in_chair' ? minsSince(appt.arrived_at ?? appt.seated_at, nowMs) : null
+  const seen = appt.status === 'completed'
+  const due = appt.balance_due ?? null
+  const settled = due !== null && due <= 0
+  // Reception's next step for a seen patient is payment, so the name goes there.
+  const nameHref = appt.patients
+    ? seen && canTakePayment
+      ? `/patients/${appt.patients.id}/billing`
+      : `/patients/${appt.patients.id}`
+    : null
 
   return (
-    <div className="bg-white rounded-control border border-ink/8 shadow-soft px-3 py-2.5 space-y-2">
+    <div
+      className={`rounded-control border shadow-soft px-3 py-2.5 space-y-2 ${
+        seen
+          ? `bg-success/[0.07] border-success/40 border-l-4 border-l-success ${settled ? 'opacity-70' : ''}`
+          : 'bg-white border-ink/8'
+      }`}
+    >
+      {seen && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1 rounded-full bg-success text-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide">
+            <CheckCircle2 size={12} /> Seen
+          </span>
+          {canTakePayment && due !== null && (
+            <span
+              className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${
+                due > 0 ? 'bg-gold/20 text-gold-deep' : 'bg-success/15 text-success'
+              }`}
+            >
+              {due > 0 ? `To pay · ${money(due)}` : 'Paid ✓'}
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
@@ -82,9 +118,10 @@ function Card({
             )}
             {appt.patients?.is_ortho && <span className="text-[10px] text-gold-deep">· Ortho</span>}
           </div>
-          {appt.patients ? (
+          {nameHref ? (
             <Link
-              href={`/patients/${appt.patients.id}`}
+              href={nameHref}
+              title={seen && canTakePayment ? 'Open billing to record the payment' : undefined}
               className="block text-sm text-ink-strong font-medium truncate hover:text-teal-deep"
             >
               {name}
@@ -101,7 +138,7 @@ function Card({
             className={`shrink-0 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${
               wait >= 20 ? 'bg-danger/10 text-danger' : 'bg-ink/5 text-ink/50'
             }`}
-            title={appt.status === 'arrived' ? 'Waiting time' : 'In chair'}
+            title="Minutes since check-in"
           >
             <Clock size={10} />
             {wait}m
@@ -122,21 +159,11 @@ function Card({
             </ActionBtn>
           </>
         )}
-        {appt.status === 'arrived' && (
-          <>
-            <ActionBtn onClick={() => onStatus(appt.id, 'in_chair')} disabled={pending} tone="teal">
-              <Armchair size={12} /> Seat
-            </ActionBtn>
-            {appt.patients && (
-              <StartVisit patientId={appt.patients.id} />
-            )}
-          </>
-        )}
-        {appt.status === 'in_chair' && (
+        {(appt.status === 'arrived' || appt.status === 'in_chair') && (
           <>
             {appt.patients && <StartVisit patientId={appt.patients.id} />}
             <ActionBtn onClick={() => onStatus(appt.id, 'completed')} disabled={pending} tone="success">
-              <CheckCircle2 size={12} /> Complete
+              <CheckCircle2 size={12} /> Mark seen
             </ActionBtn>
           </>
         )}
@@ -149,14 +176,18 @@ function Card({
             <X size={13} />
           </IconBtn>
         )}
-        {appt.status === 'completed' && (
+        {seen && (
           <>
-            {appt.patients && (
+            {appt.patients && canTakePayment && (
               <Link
                 href={`/patients/${appt.patients.id}/billing`}
-                className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-control bg-gold/12 text-gold-deep hover:bg-gold/20 font-medium transition-colors"
+                className={
+                  settled
+                    ? 'inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-control text-ink/55 hover:text-teal-deep hover:bg-marble transition-colors'
+                    : 'inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-control bg-gold text-white hover:bg-gold-deep font-medium transition-colors'
+                }
               >
-                <Wallet size={12} /> Take payment
+                <Wallet size={13} /> {settled ? 'Billing' : 'Take payment'}
               </Link>
             )}
             {appt.patients && (
@@ -167,8 +198,8 @@ function Card({
                 <UserRound size={12} /> Profile
               </Link>
             )}
-            <ActionBtn onClick={() => onStatus(appt.id, 'in_chair')} disabled={pending} tone="muted">
-              <Undo2 size={12} /> Reopen
+            <ActionBtn onClick={() => onStatus(appt.id, 'arrived')} disabled={pending} tone="muted">
+              <Undo2 size={12} /> Not done
             </ActionBtn>
           </>
         )}
@@ -241,7 +272,13 @@ function IconBtn({
   )
 }
 
-export default function DayBoard({ appointments }: { appointments: BoardAppointment[] }) {
+export default function DayBoard({
+  appointments,
+  canTakePayment = false,
+}: {
+  appointments: BoardAppointment[]
+  canTakePayment?: boolean
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -259,8 +296,8 @@ export default function DayBoard({ appointments }: { appointments: BoardAppointm
       if (!res?.ok) {
         setErr(
           (res?.message || 'Update failed') +
-            ((status === 'arrived' || status === 'in_chair')
-              ? ' — run migration 07_appointments_workflow.sql to enable the check-in / in-chair steps.'
+            (status === 'arrived'
+              ? ' — run migration 07_appointments_workflow.sql to enable check-in.'
               : '')
         )
         return
@@ -285,7 +322,7 @@ export default function DayBoard({ appointments }: { appointments: BoardAppointm
     })
   }
 
-  const byStatus = (s: LaneKey) => appointments.filter((a) => a.status === s)
+  const inLane = (statuses: string[]) => appointments.filter((a) => statuses.includes(a.status))
   const offRamp = appointments.filter((a) => a.status === 'no_show' || a.status === 'cancelled')
 
   return (
@@ -293,9 +330,9 @@ export default function DayBoard({ appointments }: { appointments: BoardAppointm
       {err && (
         <div className="bg-danger/10 text-danger text-sm px-4 py-2.5 rounded-control">{err}</div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {LANES.map((lane) => {
-          const items = byStatus(lane.key)
+          const items = inLane(lane.statuses)
           return (
             <div key={lane.key} className={`rounded-card ${lane.tint} p-3 min-h-[8rem]`}>
               <div className="flex items-center justify-between mb-2.5 px-0.5">
@@ -310,6 +347,7 @@ export default function DayBoard({ appointments }: { appointments: BoardAppointm
                     key={a.id}
                     appt={a}
                     nowMs={nowMs}
+                    canTakePayment={canTakePayment}
                     onStatus={setStatus}
                     onRemove={remove}
                     pending={isPending}

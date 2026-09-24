@@ -49,16 +49,96 @@ export async function logVisit(formData: FormData) {
     return { ok: false, message: error.message }
   }
 
+  // Saving the treatment is the end of the visit: the patient shows as Seen on
+  // the board and reception picks them up for payment. Never fails the save.
+  const clinicId = (formData.get('clinic_id') as string) || null
+  let seen = false
+  try {
+    seen = await finishTodaysVisit(supabase, patientId, clinicId)
+  } catch {
+    seen = false
+  }
+
   revalidatePath(`/patients/${patientId}`)
   revalidatePath('/inventory')
+  revalidatePath('/appointments')
+  revalidatePath('/patients')
+  revalidatePath('/reception')
 
   const warnings = (data as any)?.reorder_warnings || []
+  const saved = seen ? 'Visit saved — patient marked as seen and sent to reception' : 'Visit saved'
   return {
     ok: true,
     message: warnings.length > 0
-      ? `Visit saved. Low stock: ${warnings.map((w: any) => `${w.item} (${w.remaining} left)`).join(', ')}`
-      : 'Visit saved successfully',
+      ? `${saved}. Low stock: ${warnings.map((w: any) => `${w.item} (${w.remaining} left)`).join(', ')}`
+      : saved,
   }
+}
+
+type Supabase = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * Marks today's appointment for the patient as completed and links the visit
+ * just saved. A walk-in treated with no booking gets a completed appointment
+ * so they still reach reception's list. Returns whether the patient is now
+ * shown as seen.
+ */
+async function finishTodaysVisit(supabase: Supabase, patientId: string, clinicId: string | null): Promise<boolean> {
+  const now = Date.now()
+  const since = new Date(now - 18 * 3600_000).toISOString()
+
+  const { data: latest } = await supabase
+    .from('visits')
+    .select('id')
+    .eq('patient_id', patientId)
+    .order('visit_date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const visitId = (latest?.id as string | undefined) ?? null
+
+  const { data: appts } = await supabase
+    .from('appointments')
+    .select('id, status, scheduled_at, arrived_at, visit_id')
+    .eq('patient_id', patientId)
+    .in('status', ['scheduled', 'arrived', 'in_chair', 'completed'])
+    .gte('scheduled_at', since)
+    .lte('scheduled_at', new Date(now + 12 * 3600_000).toISOString())
+    .order('scheduled_at', { ascending: true })
+
+  const rows = (appts ?? []) as { id: string; status: string; scheduled_at: string; arrived_at: string | null; visit_id: string | null }[]
+  // Someone checked in beats a booking that hasn't been checked in.
+  const open =
+    rows.find((a) => a.status === 'arrived' || a.status === 'in_chair') ??
+    rows.find((a) => a.status === 'scheduled')
+
+  if (open) {
+    const { error } = await supabase
+      .from('appointments')
+      .update({
+        status: 'completed',
+        ...(visitId ? { visit_id: visitId } : {}),
+        ...(open.arrived_at ? {} : { arrived_at: new Date(now).toISOString() }),
+      })
+      .eq('id', open.id)
+    return !error
+  }
+
+  // A second save on the same day: they are already on the list as seen.
+  if (rows.some((a) => a.status === 'completed')) return true
+
+  const stamp = new Date(now).toISOString()
+  const base: Record<string, unknown> = {
+    patient_id: patientId,
+    scheduled_at: stamp,
+    duration_minutes: 30,
+    status: 'completed',
+    arrived_at: stamp,
+    visit_id: visitId,
+  }
+  let { error } = await supabase.from('appointments').insert(clinicId ? { ...base, clinic_id: clinicId } : base)
+  // Before migration 13 there is no clinic column; still record the visit.
+  if (error && clinicId) ({ error } = await supabase.from('appointments').insert(base))
+  return !error
 }
 
 export async function getLastQuickLog(patientId: string) {
