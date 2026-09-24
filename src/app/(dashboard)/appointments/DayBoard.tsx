@@ -17,6 +17,7 @@ import {
 import { updateAppointmentStatus, deleteAppointment } from './actions'
 import { CLINIC_KEY, mineFirst } from '@/components/ClinicSwitcher'
 import { useStoredValue } from '@/lib/useStoredValue'
+import { needsReception, payLabel, type PayState } from '@/lib/payState'
 
 export type BoardAppointment = {
   id: string
@@ -30,6 +31,8 @@ export type BoardAppointment = {
   clinic_name?: string | null
   /** Seen patients only, for staff who take money: what the patient still owes overall. */
   balance_due?: number | null
+  /** Seen patients only, for staff who take money: where they stand with payment. */
+  pay_state?: PayState | null
   patients: { id: string; full_name: string; phone: string | null; is_ortho: boolean } | null
 }
 
@@ -80,7 +83,8 @@ function Card({
     appt.status === 'arrived' || appt.status === 'in_chair' ? minsSince(appt.arrived_at ?? appt.seated_at, nowMs) : null
   const seen = appt.status === 'completed'
   const due = appt.balance_due ?? null
-  const settled = due !== null && due <= 0
+  const payState = appt.pay_state ?? null
+  const settled = payState !== null && !needsReception(payState)
   // Reception's next step for a seen patient is payment, so the name goes there.
   const nameHref = appt.patients
     ? seen && canTakePayment
@@ -103,13 +107,13 @@ function Card({
           <span className="inline-flex items-center gap-1 rounded-full bg-success text-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide">
             <CheckCircle2 size={12} /> Seen
           </span>
-          {canTakePayment && due !== null && (
+          {canTakePayment && payState !== null && (
             <span
               className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${
-                due > 0 ? 'bg-gold/20 text-gold-deep' : 'bg-success/15 text-success'
+                needsReception(payState) ? 'bg-gold/20 text-gold-deep' : 'bg-success/15 text-success'
               }`}
             >
-              {due > 0 ? `To pay · ${money(due)}` : 'Paid ✓'}
+              {payState === 'owes' ? `To pay · ${money(due ?? 0)}` : payLabel(payState, due)}
             </span>
           )}
         </div>

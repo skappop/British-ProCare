@@ -39,6 +39,7 @@ export default async function BillingPage({ params }: { params: Promise<{ id: st
       id: v.id,
       at: v.visit_date,
       amount: Number(v.fee_charged) || 0,
+      priced: v.fee_charged !== null && v.fee_charged !== undefined,
       what: (v.visit_procedures ?? [])
         .map((vp) => (Array.isArray(vp.procedures) ? vp.procedures[0]?.name : vp.procedures?.name))
         .filter((n): n is string => !!n)

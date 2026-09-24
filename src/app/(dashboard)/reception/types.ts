@@ -1,3 +1,4 @@
+import type { PayState } from '@/lib/payState'
 // Shared types for the guided Walk-In (reception) flow.
 // This flow orchestrates existing clinic features — it does not replace them.
 
@@ -23,6 +24,8 @@ export type TodayAppointment = {
   status: string
   /** Seen patients only: what they still owe (0 when paid up). */
   balance_due?: number | null
+  /** Seen patients only: where they stand with payment today. */
+  pay_state?: PayState | null
   patient: ReceptionPatient | null
 }
 

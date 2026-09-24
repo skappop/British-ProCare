@@ -75,7 +75,12 @@ export default function WaitingNow({ rows }: { rows: WaitingRow[] }) {
               </span>
             </div>
             <p className="mt-1 flex items-center gap-1.5 text-xs text-gold-deep font-medium">
-              <Wallet size={12} /> Take payment · EGP {Math.round(r.balance_due ?? 0).toLocaleString()}
+              <Wallet size={12} />{' '}
+              {r.pay_state === 'price_missing'
+                ? 'Set the price, then take payment'
+                : r.pay_state === 'unknown'
+                  ? 'Check payment'
+                  : `Take payment · EGP ${Math.round(r.balance_due ?? 0).toLocaleString()}`}
               {r.clinic && <span className="text-ink/45 font-normal">· {r.clinic}</span>}
             </p>
           </Link>

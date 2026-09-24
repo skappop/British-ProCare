@@ -7,7 +7,7 @@ import { PAYMENT_METHODS, methodLabel } from './methods'
 import { updateVisitFee } from '../actions'
 
 export type HistoryItem =
-  | { kind: 'visit'; id: string; at: string; amount: number; what: string }
+  | { kind: 'visit'; id: string; at: string; amount: number; priced: boolean; what: string }
   | { kind: 'payment'; id: string; at: string; amount: number; method: string; what: string }
 
 const egp = (n: number) => `EGP ${Math.round(n).toLocaleString()}`
@@ -37,6 +37,9 @@ export default function BillingDesk({
   const [isPending, startTransition] = useTransition()
 
   const value = Number(amount)
+  // Saved without a price (e.g. procedures with no price in the list): not
+  // "paid", just not priced yet. Reception sets it, or marks it free.
+  const unpriced = history.filter((h): h is Extract<HistoryItem, { kind: 'visit' }> => h.kind === 'visit' && !h.priced)
   const label = PAYMENT_METHODS.find((m) => m.value === method)?.label ?? ''
 
   const [duplicate, setDuplicate] = useState<string | null>(null)
@@ -55,10 +58,10 @@ export default function BillingDesk({
     })
   }
 
-  function savePrice(visitId: string) {
+  function savePrice(visitId: string, value: string = price) {
     setError(null)
     startTransition(async () => {
-      const res = await updateVisitFee(visitId, patientId, price)
+      const res = await updateVisitFee(visitId, patientId, value)
       if (!res.ok) return setError(res.message || 'Could not change the price')
       setEditing(null)
     })
@@ -75,13 +78,15 @@ export default function BillingDesk({
   return (
     <div className="space-y-5">
       {/* 1. Where they stand */}
-      <div className={`rounded-card px-6 py-5 ${balance > 0 ? 'bg-marquina text-white' : 'bg-success/10'}`}>
+      <div className={`rounded-card px-6 py-5 ${balance > 0 ? 'bg-marquina text-white' : unpriced.length > 0 ? 'bg-gold/10' : 'bg-success/10'}`}>
         <p className={`text-sm ${balance > 0 ? 'text-white/60' : 'text-ink/55'}`}>
           {name}
           {fileNumber ? ` · File #${fileNumber}` : ''}
         </p>
         {balance > 0 ? (
           <p className="mt-1 font-display text-3xl text-gold-light">Owes {egp(balance)}</p>
+        ) : unpriced.length > 0 ? (
+          <p className="mt-1 font-display text-3xl text-gold-deep">Price not set yet</p>
         ) : (
           <p className="mt-1 inline-flex items-center gap-2 font-display text-3xl text-success">
             <CheckCircle2 size={26} /> All paid
@@ -89,6 +94,19 @@ export default function BillingDesk({
           </p>
         )}
       </div>
+
+      {unpriced.map((v) => (
+        <UnpricedVisit
+          key={v.id}
+          visit={v}
+          busy={isPending}
+          onSave={(fee) => {
+            savePrice(v.id, fee)
+            // Ready to take: what they owe once this price is on.
+            if (Number(fee) > 0) setAmount(String(Math.max(balance, 0) + Number(fee)))
+          }}
+        />
+      ))}
 
       {/* 2. Take the payment */}
       <div className="space-y-4 rounded-card bg-white p-6 shadow-soft">
@@ -223,9 +241,9 @@ export default function BillingDesk({
                     setPrice(String(h.amount || ''))
                   }}
                   title="Change the price (discount or correction)"
-                  className="group inline-flex items-center gap-1.5 font-mono text-sm text-ink-strong"
+                  className={`group inline-flex items-center gap-1.5 font-mono text-sm ${h.priced ? 'text-ink-strong' : 'font-sans text-gold-deep'}`}
                 >
-                  {egp(h.amount)}
+                  {h.priced ? (h.amount === 0 ? 'No charge' : egp(h.amount)) : 'Price not set'}
                   <Pencil size={12} className="text-ink/25 group-hover:text-teal-deep" />
                 </button>
               ) : (
@@ -243,6 +261,61 @@ export default function BillingDesk({
           ))}
           {history.length === 0 && <p className="px-6 py-8 text-center text-sm text-ink/40">Nothing yet.</p>}
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** A visit saved without a price: set it here, or mark it free. */
+function UnpricedVisit({
+  visit,
+  busy,
+  onSave,
+}: {
+  visit: Extract<HistoryItem, { kind: 'visit' }>
+  busy: boolean
+  onSave: (fee: string) => void
+}) {
+  const [fee, setFee] = useState('')
+  return (
+    <div className="space-y-3 rounded-card border border-gold/40 bg-gold/10 p-5">
+      <div>
+        <p className="font-medium text-ink-strong">Visit on {day(visit.at)} has no price yet</p>
+        {visit.what && <p className="text-sm text-ink/60">{visit.what}</p>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center rounded-control border border-ink/15 bg-white focus-within:ring-2 focus-within:ring-teal">
+          <span className="pl-3 text-sm text-ink/45">EGP</span>
+          <input
+            inputMode="decimal"
+            value={fee}
+            onChange={(e) => setFee(e.target.value.replace(/[^\d.]/g, ''))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && Number(fee) > 0) onSave(fee)
+            }}
+            placeholder="Price"
+            aria-label="Price for this visit"
+            className="w-28 bg-transparent px-2 py-2.5 font-mono text-base focus:outline-none"
+          />
+        </div>
+        <button
+          type="button"
+          disabled={busy || !(Number(fee) > 0)}
+          onClick={() => onSave(fee)}
+          className="rounded-control bg-teal px-4 py-2.5 text-sm font-medium text-white disabled:bg-ink/20"
+        >
+          Set price
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (confirm('Mark this visit as free (no charge)?')) onSave('0')
+          }}
+          className="rounded-control border border-ink/15 bg-white px-4 py-2.5 text-sm text-ink/70"
+        >
+          No charge
+        </button>
       </div>
     </div>
   )

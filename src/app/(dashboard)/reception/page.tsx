@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getPayStates } from '@/lib/payStatus'
 import LiveRefresh from '@/components/LiveRefresh'
 import ReceptionFlow from './ReceptionFlow'
 import type { Procedure, ReceptionPatient, TodayAppointment } from './types'
@@ -41,20 +42,17 @@ export default async function ReceptionPage({
     if (pp) initialPatient = { ...(pp as any), is_ortho: !!(pp as any).is_ortho }
   }
 
-  // What seen patients still owe, so paid ones can fold away.
+  // Where seen patients stand with payment, so only the settled ones fold away.
   const rows = (appointments ?? []) as unknown as { status: string; patient_id: string }[]
-  const seenIds = [...new Set(rows.filter((a) => a.status === 'completed').map((a) => a.patient_id))]
-  const owed = new Map<string, number>()
-  if (seenIds.length) {
-    const { data: balances } = await supabase.from('patient_balances').select('patient_id, balance').in('patient_id', seenIds)
-    for (const b of balances ?? []) owed.set(b.patient_id as string, Number(b.balance) || 0)
-  }
+  const seenIds = rows.filter((a) => a.status === 'completed').map((a) => a.patient_id)
+  const pay = await getPayStates(supabase, seenIds, todayStart, todayEnd)
 
   const todayAppointments: TodayAppointment[] = ((appointments as any[]) || []).map((a) => ({
     id: a.id,
     scheduled_at: a.scheduled_at,
     status: a.status,
-    balance_due: a.status === 'completed' ? owed.get(a.patient_id) ?? 0 : null,
+    balance_due: a.status === 'completed' ? pay.get(a.patient_id)?.due ?? 0 : null,
+    pay_state: a.status === 'completed' ? pay.get(a.patient_id)?.state ?? 'unknown' : null,
     patient: a.patients
       ? {
           id: a.patients.id,

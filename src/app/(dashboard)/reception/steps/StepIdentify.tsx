@@ -7,6 +7,7 @@ import type { ReceptionPatient, TodayAppointment } from '../types'
 import { searchWalkInPatients, quickCreatePatient } from '../receptionActions'
 import { StepCard, PrimaryButton, GhostButton, Field, inputClass, inputMonoClass, SectionLabel } from '../ui'
 import PendingRegistrations from './PendingRegistrations'
+import { needsReception, payLabel } from '@/lib/payState'
 
 function timeOf(iso: string) {
   return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
@@ -58,8 +59,8 @@ export default function StepIdentify({
   // Still needing something today: seen-but-unpaid first, then everyone else.
   // Seen and paid fold away under "Done today"; the whole list starts fresh
   // each clinic day.
-  const toPay = today.filter((a) => a.status === 'completed' && (a.balance_due ?? 0) > 0)
-  const done = today.filter((a) => a.status === 'completed' && (a.balance_due ?? 0) <= 0)
+  const toPay = today.filter((a) => a.status === 'completed' && needsReception(a.pay_state))
+  const done = today.filter((a) => a.status === 'completed' && !needsReception(a.pay_state))
   const waiting = [...toPay, ...today.filter((a) => a.status !== 'completed')]
 
   function handleCreate() {
@@ -109,7 +110,12 @@ export default function StepIdentify({
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm text-ink-strong font-medium truncate">{a.patient.full_name}</span>
                         <span className="flex items-center gap-1 text-xs text-gold-deep font-medium">
-                          <Wallet size={12} /> Seen · take payment · EGP {Math.round(a.balance_due ?? 0).toLocaleString()}
+                          <Wallet size={12} />{' '}
+                          {a.pay_state === 'price_missing'
+                            ? 'Seen · set the price, then take payment'
+                            : a.pay_state === 'unknown'
+                              ? 'Seen · check payment'
+                              : `Seen · take payment · EGP ${Math.round(a.balance_due ?? 0).toLocaleString()}`}
                         </span>
                       </span>
                     </Link>
@@ -146,7 +152,7 @@ export default function StepIdentify({
             <details className="group rounded-control border border-ink/10">
               <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 text-sm text-ink/60">
                 <span className="inline-flex items-center gap-2">
-                  <CheckCircle2 size={15} className="text-success" /> Done today · {done.length} seen and paid
+                  <CheckCircle2 size={15} className="text-success" /> Done today · {done.length} seen and settled
                 </span>
                 <span className="text-xs text-teal-deep group-open:hidden">Show</span>
               </summary>
@@ -154,7 +160,7 @@ export default function StepIdentify({
                 {done.map((a) => (
                   <Link key={a.id} href={`/patients/${a.patient!.id}/billing`} className="flex items-center justify-between px-3.5 py-2 text-sm hover:bg-marble/60">
                     <span className="text-ink-strong">{a.patient!.full_name}</span>
-                    <span className="text-xs text-ink/45">Paid ✓</span>
+                    <span className="text-xs text-ink/45">{payLabel(a.pay_state, a.balance_due)}</span>
                   </Link>
                 ))}
               </div>

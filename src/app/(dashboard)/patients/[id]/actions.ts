@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 
 export async function logVisit(formData: FormData) {
   const supabase = await createClient()
@@ -64,6 +65,12 @@ export async function logVisit(formData: FormData) {
   revalidatePath('/appointments')
   revalidatePath('/patients')
   revalidatePath('/reception')
+
+  // The doctor's patient page: the visit is over, back to the day's board.
+  // Done here, as part of the save, rather than by the browser afterwards:
+  // a separate navigation can be cancelled by the live refresh that the
+  // save's own changes set off, leaving the doctor on the patient's page.
+  if (formData.get('then') === 'appointments') redirect('/appointments')
 
   const warnings = (data as any)?.reorder_warnings || []
   const saved = seen ? 'Visit saved — patient marked as seen and sent to reception' : 'Visit saved'
@@ -222,5 +229,6 @@ export async function updateVisitFee(
   revalidatePath(`/patients/${patientId}/billing`)
   revalidatePath('/appointments')
   revalidatePath('/patients')
+  revalidatePath('/reception')
   return { ok: true }
 }

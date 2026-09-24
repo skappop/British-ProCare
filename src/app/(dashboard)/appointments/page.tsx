@@ -7,6 +7,8 @@ import ClinicSwitcher from '@/components/ClinicSwitcher'
 import LiveRefresh from '@/components/LiveRefresh'
 import { getClinics } from '@/lib/clinics'
 import { canHandleMoney } from '@/lib/auth/role'
+import { getPayStates } from '@/lib/payStatus'
+import { needsReception } from '@/lib/payState'
 
 function startOfDay(d: Date) {
   const x = new Date(d)
@@ -92,13 +94,13 @@ export default async function AppointmentsPage({
   const canTakePayment = await canHandleMoney()
   const seenIds = [...new Set(dayAppts.filter((a) => a.status === 'completed' && a.patients).map((a) => a.patients!.id))]
   if (canTakePayment && seenIds.length > 0) {
-    const { data: balances } = await supabase
-      .from('patient_balances')
-      .select('patient_id, balance')
-      .in('patient_id', seenIds)
-    const due = new Map((balances ?? []).map((b) => [b.patient_id as string, Number(b.balance) || 0] as const))
+    const pay = await getPayStates(supabase, seenIds, rangeStart, rangeEnd)
     for (const a of dayAppts) {
-      if (a.status === 'completed' && a.patients) a.balance_due = due.get(a.patients.id) ?? 0
+      if (a.status === 'completed' && a.patients) {
+        const p = pay.get(a.patients.id)
+        a.balance_due = p?.due ?? 0
+        a.pay_state = p?.state ?? 'unknown'
+      }
     }
   }
 
@@ -108,7 +110,7 @@ export default async function AppointmentsPage({
     { label: 'Here', value: count('arrived', 'in_chair'), cls: 'text-gold-deep' },
     { label: 'Seen', value: count('completed'), cls: 'text-success' },
     ...(canTakePayment
-      ? [{ label: 'To pay', value: dayAppts.filter((a) => (a.balance_due ?? 0) > 0).length, cls: 'text-danger' }]
+      ? [{ label: 'To pay', value: dayAppts.filter((a) => a.status === 'completed' && needsReception(a.pay_state)).length, cls: 'text-danger' }]
       : []),
   ]
 

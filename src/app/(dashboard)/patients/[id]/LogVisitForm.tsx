@@ -112,14 +112,17 @@ export function VisitDraft({
     formData.set('notes', notes)
     if (clinic) formData.set('clinic_id', clinic)
     if (quickLogData) formData.set('quick_log', JSON.stringify(quickLogData))
+    // Visit done: the save itself sends the doctor back to the day's board,
+    // where the patient now shows as seen.
+    formData.set('then', 'appointments')
 
     startTransition(async () => {
       const res = await logVisit(formData)
+      if (!res) return // on the way to the board
       setResult(res)
       if (res.ok) {
         setSelectedIds([])
         setNotes('')
-        // Visit done: back to the day's board, where the patient now shows as seen.
         router.push('/appointments')
       }
     })

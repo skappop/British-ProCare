@@ -1,4 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
+import { clinicDayRange } from '@/lib/clinicDay'
+import { getPayStates } from '@/lib/payStatus'
+import { needsReception, type PayState } from '@/lib/payState'
 
 export type WaitingRow = {
   appointment_id: string
@@ -8,6 +11,8 @@ export type WaitingRow = {
   since: string | null
   /** Seen patients only, when asked for: outstanding balance. */
   balance_due: number | null
+  /** Seen patients only: where they stand with payment today. */
+  pay_state: PayState | null
   clinic_id: string | null
   clinic: string | null
   note: string | null
@@ -38,26 +43,21 @@ export async function getWaitingNow(withSeen = false): Promise<WaitingRow[]> {
   const one = <T,>(v: T | T[] | null) => (Array.isArray(v) ? v[0] ?? null : v)
 
   const rows = data as unknown as Row[]
-  const due = new Map<string, number>()
-  const seenIds = [...new Set(rows.filter((r) => r.status === 'completed').map((r) => r.patient_id))]
-  if (seenIds.length > 0) {
-    const { data: balances } = await supabase
-      .from('patient_balances')
-      .select('patient_id, balance')
-      .in('patient_id', seenIds)
-    for (const b of balances ?? []) due.set(b.patient_id as string, Number(b.balance) || 0)
-  }
+  const seenIds = rows.filter((r) => r.status === 'completed').map((r) => r.patient_id)
+  const { start, end } = clinicDayRange()
+  const pay = await getPayStates(supabase, seenIds, start, end)
 
   return rows
-    // A seen patient drops off once they have paid.
-    .filter((r) => r.status !== 'completed' || (due.get(r.patient_id) ?? 0) > 0)
+    // A seen patient drops off once settled (paid, or nothing to charge).
+    .filter((r) => r.status !== 'completed' || needsReception(pay.get(r.patient_id)?.state ?? 'unknown'))
     .map((r) => ({
       appointment_id: r.id,
       patient_id: r.patient_id,
       name: one(r.patients)?.full_name ?? 'Patient',
       status: r.status,
       since: r.status === 'in_chair' ? r.seated_at ?? r.arrived_at : r.arrived_at,
-      balance_due: r.status === 'completed' ? due.get(r.patient_id) ?? 0 : null,
+      balance_due: r.status === 'completed' ? pay.get(r.patient_id)?.due ?? 0 : null,
+      pay_state: r.status === 'completed' ? pay.get(r.patient_id)?.state ?? 'unknown' : null,
       clinic_id: r.clinic_id,
       clinic: one(r.clinics)?.name ?? null,
       note: r.notes,
