@@ -5,6 +5,7 @@ import AppShell from '@/components/AppShell'
 import ArrivalAlerts from '@/components/ArrivalAlerts'
 import { signOut } from './actions'
 import { getCurrentUserRole } from '@/lib/auth/role'
+import { countContainersDue } from './stock/data'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -20,12 +21,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .select('features_enabled, google_sheets_enabled')
     .single()
 
-  const role = await getCurrentUserRole()
+  const [role, stockDue] = await Promise.all([getCurrentUserRole(), countContainersDue().catch(() => 0)])
 
   return (
     <>
       <SplashScreen />
-      <AppShell userEmail={user.email || ''} signOutAction={signOut} config={config} role={role}>
+      <AppShell userEmail={user.email || ''} signOutAction={signOut} config={config} role={role} stockDue={stockDue}>
         {children}
       </AppShell>
       <ArrivalAlerts />

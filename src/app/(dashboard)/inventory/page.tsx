@@ -27,6 +27,9 @@ export default async function InventoryPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <h1 className="font-display text-2xl text-ink-strong">Inventory</h1>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Link href="/stock" className="text-xs font-medium text-teal-deep hover:underline">
+            Stock check →
+          </Link>
           <Link href="/inventory/scan" className="text-xs text-teal-deep hover:underline">
             Scan to Pull
           </Link>

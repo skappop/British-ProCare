@@ -41,6 +41,8 @@ const RULES: [prefix: string, roles: StaffRole[]][] = [
   ['/patients', ALL],
   ['/chart', ALL],
   ['/lab-cases', ALL],
+  ['/stock/setup', ['owner', 'dentist']], // deciding what each container holds
+  ['/stock', ALL], // the closing routine: whoever closes up does it
 ]
 
 /** A role we do not recognise is treated as the front desk, the least privileged. */

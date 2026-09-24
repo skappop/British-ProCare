@@ -16,6 +16,7 @@ import {
   Sheet,
   Settings as SettingsIcon,
   Smile,
+  ClipboardCheck,
 } from 'lucide-react'
 import { canOpen } from '@/lib/auth/access'
 
@@ -34,10 +35,11 @@ interface NavConfig {
 interface SidebarNavProps {
   config?: NavConfig | null
   role?: 'owner' | 'dentist' | 'assistant' | null
+  stockDue?: number
 }
 
 
-export default function SidebarNav({ config, role }: SidebarNavProps) {
+export default function SidebarNav({ config, role, stockDue = 0 }: SidebarNavProps) {
   const pathname = usePathname()
 
   // Define all possible navigation items with their visibility logic
@@ -59,6 +61,8 @@ export default function SidebarNav({ config, role }: SidebarNavProps) {
     { href: '/patients', label: 'Patients', icon: Users, visible: true },
     // Charting from a phone at the chair: today's patients, one tap to the chart.
     { href: '/chart', label: 'Quick chart', icon: Smile, visible: true },
+    // The closing routine: check containers, count a few items, see what to order.
+    { href: '/stock', label: 'Stock check', icon: ClipboardCheck, visible: true },
     {
       href: '/lab-cases',
       label: 'Lab Cases',
@@ -120,6 +124,14 @@ export default function SidebarNav({ config, role }: SidebarNavProps) {
             />
             <Icon size={16} strokeWidth={active ? 2.2 : 1.8} />
             {label}
+            {href === '/stock' && stockDue > 0 && (
+              <span
+                className="ml-auto rounded-full bg-gold px-1.5 text-[10px] font-semibold leading-4 text-marquina"
+                title={`${stockDue} container${stockDue === 1 ? '' : 's'} not checked today`}
+              >
+                {stockDue}
+              </span>
+            )}
           </Link>
         )
       })}
