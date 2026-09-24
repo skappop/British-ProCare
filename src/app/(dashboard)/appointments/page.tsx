@@ -200,12 +200,12 @@ export default async function AppointmentsPage({
               {isToday ? 'No one booked today yet.' : 'No appointments on this day.'}
             </div>
           ) : (
-            <DayBoard appointments={dayAppts} canTakePayment={canTakePayment} />
+            <DayBoard appointments={dayAppts} clinics={clinics} canTakePayment={canTakePayment} />
           )}
 
           {/* Booking */}
           <div className="max-w-md">
-            <BookingForm defaultDate={toDateStr(anchor)} />
+            <BookingForm defaultDate={toDateStr(anchor)} clinics={clinics.map((c) => ({ id: c.id, name: c.name }))} />
           </div>
         </>
       ) : (
@@ -218,7 +218,7 @@ export default async function AppointmentsPage({
             />
           </div>
           <div>
-            <BookingForm defaultDate={toDateStr(anchor)} />
+            <BookingForm defaultDate={toDateStr(anchor)} clinics={clinics.map((c) => ({ id: c.id, name: c.name }))} />
           </div>
         </div>
       )}

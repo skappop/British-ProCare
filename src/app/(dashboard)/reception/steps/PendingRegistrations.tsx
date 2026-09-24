@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState, useTransition } from 'react'
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { Smartphone, X, HeartPulse, CalendarPlus, LogIn, MessageCircle, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { ReceptionPatient } from '../types'
@@ -12,8 +12,7 @@ import {
   type PendingRegistration,
 } from '../receptionActions'
 import { createAppointment } from '../../appointments/actions'
-import { localDateTimeToIso } from '@/lib/utils'
-import { useStoredValue } from '@/lib/useStoredValue'
+import BookSlot, { slotForm, type Slot } from '@/components/BookSlot'
 import { SectionLabel } from '../ui'
 
 function ago(iso: string) {
@@ -22,13 +21,6 @@ function ago(iso: string) {
   const hours = Math.round(mins / 60)
   if (hours < 24) return `${hours} h ago`
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-}
-
-function isoDay(offsetDays: number) {
-  const d = new Date()
-  d.setDate(d.getDate() + offsetDays)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 /** 010… → 2010… for a WhatsApp link. */
@@ -99,28 +91,27 @@ export default function PendingRegistrations({
     })
   }
 
-  function book(reg: PendingRegistration, target: string, slot: { date: string; time: string; clinicId: string }) {
+  // Registrations already turned into patients (so a "book another?" retry
+  // does not try to accept the same registration twice).
+  const accepted = useRef<Record<string, ReceptionPatient>>({})
+
+  async function book(reg: PendingRegistration, target: string, slot: Slot, allowSecond: boolean) {
     setError(null)
-    const iso = localDateTimeToIso(slot.date, slot.time)
-    if (!iso) return setError('Pick a day and a time')
     setBusy(reg.id)
-    startTransition(async () => {
-      const res = await acceptRegistration(reg.id, target)
-      if (!res.ok || !res.patient) {
-        setBusy(null)
-        setError(res.message || 'Could not book this patient')
-        return load()
+    try {
+      let patient = accepted.current[reg.id]
+      if (!patient) {
+        const res = await acceptRegistration(reg.id, target)
+        if (!res.ok || !res.patient) {
+          setError(res.message || 'Could not book this patient')
+          load()
+          return { ok: false, message: res.message || 'Could not book this patient' }
+        }
+        patient = res.patient
+        accepted.current[reg.id] = patient
       }
-      const fd = new FormData()
-      fd.set('patient_id', res.patient.id)
-      fd.set('date', slot.date)
-      fd.set('time', slot.time)
-      fd.set('scheduled_at', iso)
-      fd.set('duration', '30')
-      if (slot.clinicId) fd.set('clinic_id', slot.clinicId)
-      if (reg.reason) fd.set('notes', reg.reason)
-      const appt = await createAppointment(fd)
-      setBusy(null)
+      const appt = await createAppointment(slotForm(patient.id, slot, allowSecond))
+      if (appt.duplicate) return appt
       setBooking(null)
       if (!appt.ok) {
         setError(`${reg.full_name} was added as a patient, but the booking failed: ${appt.message}. Book them from Appointments.`)
@@ -128,13 +119,17 @@ export default function PendingRegistrations({
         setBooked({
           name: reg.full_name,
           phone: reg.phone,
-          when: new Date(iso).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' }),
+          when: new Date(slot.iso).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' }),
           clinic: clinics.find((c) => c.id === slot.clinicId)?.name ?? null,
         })
       }
       load()
-    })
+      return appt
+    } finally {
+      setBusy(null)
+    }
   }
+
 
   function dismiss(reg: PendingRegistration) {
     if (!confirm(`Remove ${reg.full_name}'s online registration? Nothing else is affected.`)) return
@@ -236,12 +231,14 @@ export default function PendingRegistrations({
               )}
 
               {booking === reg.id ? (
-                <BookTime
-                  clinics={clinics}
-                  busy={busy === reg.id}
-                  onCancel={() => setBooking(null)}
-                  onBook={(slot) => book(reg, who[reg.id] ?? reg.match?.id ?? 'new', slot)}
-                />
+                <div className="rounded-control bg-white p-3 ring-1 ring-ink/10">
+                  <BookSlot
+                    clinics={clinics}
+                    defaultNotes={reg.reason}
+                    onCancel={() => setBooking(null)}
+                    onBook={(slot, allowSecond) => book(reg, who[reg.id] ?? reg.match?.id ?? 'new', slot, allowSecond)}
+                  />
+                </div>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -270,66 +267,3 @@ export default function PendingRegistrations({
   )
 }
 
-/** Reception picks the slot: a day, a time, and which clinic. */
-function BookTime({
-  clinics,
-  busy,
-  onBook,
-  onCancel,
-}: {
-  clinics: { id: string; name: string }[]
-  busy: boolean
-  onBook: (slot: { date: string; time: string; clinicId: string }) => void
-  onCancel: () => void
-}) {
-  const [myClinic] = useStoredValue('procare.clinic')
-  const [date, setDate] = useState(() => isoDay(1))
-  const [time, setTime] = useState('')
-  const [clinicId, setClinicId] = useState<string | null>(null)
-  const clinic = clinicId ?? (clinics.some((c) => c.id === myClinic) ? myClinic! : clinics[0]?.id ?? '')
-  const field = 'rounded-control border border-ink/15 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal'
-
-  return (
-    <div className="space-y-2 rounded-control bg-white p-3 ring-1 ring-ink/10">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {[
-          { label: 'Today', value: isoDay(0) },
-          { label: 'Tomorrow', value: isoDay(1) },
-        ].map((d) => (
-          <button
-            key={d.label}
-            type="button"
-            onClick={() => setDate(d.value)}
-            className={`rounded-full border px-3 py-1 text-xs ${date === d.value ? 'border-teal bg-teal text-white' : 'border-ink/15 text-ink/70'}`}
-          >
-            {d.label}
-          </button>
-        ))}
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={field} aria-label="Day" />
-        <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={field} aria-label="Time" />
-        {clinics.length > 1 && (
-          <select value={clinic} onChange={(e) => setClinicId(e.target.value)} className={field} aria-label="Clinic">
-            {clinics.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          disabled={busy || !date || !time}
-          onClick={() => onBook({ date, time, clinicId: clinic })}
-          className="rounded-control bg-teal px-3 py-1.5 text-xs text-white hover:bg-teal-deep disabled:bg-ink/20"
-        >
-          {busy ? 'Booking…' : time ? 'Book' : 'Pick a time'}
-        </button>
-        <button type="button" onClick={onCancel} className="text-xs text-ink/50 hover:text-ink-strong">
-          Cancel
-        </button>
-      </div>
-    </div>
-  )
-}

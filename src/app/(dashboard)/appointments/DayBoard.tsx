@@ -14,7 +14,7 @@ import {
   CalendarClock,
   Wallet,
 } from 'lucide-react'
-import { updateAppointmentStatus, deleteAppointment } from './actions'
+import { updateAppointmentStatus, deleteAppointment, setAppointmentClinic } from './actions'
 import { CLINIC_KEY, mineFirst } from '@/components/ClinicSwitcher'
 import { useStoredValue } from '@/lib/useStoredValue'
 import { needsReception, payLabel, type PayState } from '@/lib/payState'
@@ -65,7 +65,9 @@ function Card({
   nowMs,
   canTakePayment,
   elsewhere,
+  clinics,
   onStatus,
+  onClinic,
   onRemove,
   pending,
 }: {
@@ -74,10 +76,16 @@ function Card({
   canTakePayment: boolean
   /** Booked into the other clinic: shown, but faded. */
   elsewhere: boolean
-  onStatus: (id: string, status: string) => void
+  clinics: BoardClinic[]
+  onStatus: (id: string, status: string, clinicId?: string) => void
+  /** Choose the clinic for a patient booked as "decide on arrival". */
+  onClinic: (id: string, clinicId: string) => void
   onRemove: (id: string) => void
   pending: boolean
 }) {
+  // Booked without a clinic: it is chosen at check-in (or now, if already here).
+  const undecided = clinics.length > 0 && !appt.clinic_id
+  const [choosing, setChoosing] = useState(false)
   const name = appt.patients?.full_name || 'Unknown patient'
   const wait =
     appt.status === 'arrived' || appt.status === 'in_chair' ? minsSince(appt.arrived_at ?? appt.seated_at, nowMs) : null
@@ -127,6 +135,11 @@ function Card({
                 {appt.clinic_name}
               </span>
             )}
+            {undecided && (appt.status === 'scheduled' || appt.status === 'arrived' || appt.status === 'in_chair') && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold/15 text-gold-deep font-medium">
+                Clinic: on arrival
+              </span>
+            )}
             {appt.patients?.is_ortho && <span className="text-[10px] text-gold-deep">· Ortho</span>}
           </div>
           {nameHref ? (
@@ -146,6 +159,8 @@ function Card({
         </div>
         {wait !== null && (
           <span
+            // The minutes can tick over between the server's render and the browser's.
+            suppressHydrationWarning
             className={`shrink-0 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${
               wait >= 20 ? 'bg-danger/10 text-danger' : 'bg-ink/5 text-ink/50'
             }`}
@@ -160,15 +175,38 @@ function Card({
       {appt.notes && <p className="text-[11px] text-ink/45 line-clamp-2">{appt.notes}</p>}
 
       <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-        {appt.status === 'scheduled' && (
+        {appt.status === 'scheduled' && choosing && (
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-ink/55">Which clinic?</span>
+            {clinics.map((c) => (
+              <ActionBtn key={c.id} onClick={() => onStatus(appt.id, 'arrived', c.id)} disabled={pending} tone="gold">
+                {c.short_name || c.name}
+              </ActionBtn>
+            ))}
+            <ActionBtn onClick={() => setChoosing(false)} disabled={pending} tone="muted">
+              Cancel
+            </ActionBtn>
+          </span>
+        )}
+        {appt.status === 'scheduled' && !choosing && (
           <>
-            <ActionBtn onClick={() => onStatus(appt.id, 'arrived')} disabled={pending} tone="gold">
+            <ActionBtn onClick={() => (undecided ? setChoosing(true) : onStatus(appt.id, 'arrived'))} disabled={pending} tone="gold">
               <LogIn size={12} /> Check in
             </ActionBtn>
             <ActionBtn onClick={() => onStatus(appt.id, 'no_show')} disabled={pending} tone="muted">
               No-show
             </ActionBtn>
           </>
+        )}
+        {(appt.status === 'arrived' || appt.status === 'in_chair') && undecided && (
+          <span className="flex w-full flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-gold-deep">Which clinic?</span>
+            {clinics.map((c) => (
+              <ActionBtn key={c.id} onClick={() => onClinic(appt.id, c.id)} disabled={pending} tone="gold">
+                {c.short_name || c.name}
+              </ActionBtn>
+            ))}
+          </span>
         )}
         {(appt.status === 'arrived' || appt.status === 'in_chair') && (
           <>
@@ -283,11 +321,15 @@ function IconBtn({
   )
 }
 
+export type BoardClinic = { id: string; name: string; short_name: string | null }
+
 export default function DayBoard({
   appointments,
+  clinics = [],
   canTakePayment = false,
 }: {
   appointments: BoardAppointment[]
+  clinics?: BoardClinic[]
   canTakePayment?: boolean
 }) {
   const router = useRouter()
@@ -302,10 +344,19 @@ export default function DayBoard({
     return () => clearInterval(t)
   }, [])
 
-  function setStatus(id: string, status: string) {
+  function setClinic(id: string, clinicId: string) {
     setErr(null)
     startTransition(async () => {
-      const res = await updateAppointmentStatus(id, status)
+      const res = await setAppointmentClinic(id, clinicId)
+      if (!res.ok) return setErr(res.message || 'Could not set the clinic')
+      router.refresh()
+    })
+  }
+
+  function setStatus(id: string, status: string, clinicId?: string) {
+    setErr(null)
+    startTransition(async () => {
+      const res = await updateAppointmentStatus(id, status, clinicId)
       if (!res?.ok) {
         setErr(
           (res?.message || 'Update failed') +
@@ -367,7 +418,9 @@ export default function DayBoard({
                     nowMs={nowMs}
                     canTakePayment={canTakePayment}
                     elsewhere={!!mine && !!a.clinic_id && a.clinic_id !== mine}
+                    clinics={clinics}
                     onStatus={setStatus}
+                    onClinic={setClinic}
                     onRemove={remove}
                     pending={isPending}
                   />

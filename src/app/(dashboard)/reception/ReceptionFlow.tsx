@@ -42,6 +42,7 @@ export default function ReceptionFlow({
   const [nextVisitWeeks, setNextVisitWeeks] = useState<number | null>(null)
   const [payment, setPayment] = useState<PaymentSummary | null>(null)
   const [sentTo, setSentTo] = useState<string | null>(null)
+  const [bookedFor, setBookedFor] = useState<string | null>(null)
   const [doctorNote, setDoctorNote] = useState<string | null>(null)
 
   const alreadyRouted = !!initialAppointmentId
@@ -57,6 +58,7 @@ export default function ReceptionFlow({
     setNextVisitWeeks(null)
     setPayment(null)
     setSentTo(null)
+    setBookedFor(null)
     setDoctorNote(null)
     setStep('identify')
   }
@@ -199,7 +201,38 @@ export default function ReceptionFlow({
         </div>
       )}
 
-      {step === 'send' && patient && !sentTo && (
+      {step === 'send' && patient && bookedFor && (
+        <div className="bg-white rounded-card shadow-soft p-6 sm:p-8 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success/10 text-success">
+            <Check size={24} />
+          </div>
+          <h2 className="font-display text-xl text-ink-strong mt-4">{patient.full_name} is booked</h2>
+          <p className="text-sm text-ink/55 mt-2">{bookedFor}</p>
+          <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
+            <button
+              type="button"
+              onClick={reset}
+              className="bg-teal hover:bg-teal-deep text-white rounded-control px-5 py-2.5 text-sm font-medium transition-colors"
+            >
+              Next patient
+            </button>
+            {patient.phone && (
+              <a
+                href={`https://wa.me/${whatsappNumber(patient.phone)}?text=${encodeURIComponent(
+                  `Hello ${patient.full_name.split(' ')[0]}, this is British ProCare Dental Clinics. Your appointment: ${bookedFor}. Please reply to confirm.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-teal-deep hover:underline px-3 py-2.5"
+              >
+                Confirm on WhatsApp
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
+      {step === 'send' && patient && !sentTo && !bookedFor && (
         <StepSendToClinic
           patient={patient}
           alerts={alerts}
@@ -207,6 +240,7 @@ export default function ReceptionFlow({
           initialNote={doctorNote}
           onBack={() => setStep('safety')}
           onSent={(clinicName) => setSentTo(clinicName)}
+          onBooked={(label) => setBookedFor(label)}
           onHandleHere={() => setStep('visit')}
         />
       )}
@@ -247,4 +281,12 @@ export default function ReceptionFlow({
       )}
     </div>
   )
+}
+
+/** 010… → 2010… for a WhatsApp link. */
+function whatsappNumber(phone: string) {
+  const d = phone.replace(/\D/g, '')
+  if (d.startsWith('20')) return d
+  if (d.startsWith('0')) return `2${d}`
+  return d
 }

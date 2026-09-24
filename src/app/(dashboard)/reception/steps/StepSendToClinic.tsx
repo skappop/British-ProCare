@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Building2, Check, Stethoscope } from 'lucide-react'
+import { Building2, CalendarPlus, Check, Stethoscope } from 'lucide-react'
 import type { ReceptionPatient, SafetyAlerts } from '../types'
 import { getClinicOptions, sendPatientToClinic } from '../receptionActions'
 import { StepCard, GhostButton } from '../ui'
+import { createAppointment } from '../../appointments/actions'
+import BookSlot, { slotForm } from '@/components/BookSlot'
 
 type ClinicOption = { id: string; name: string; short_name: string | null }
 
@@ -23,6 +25,7 @@ export default function StepSendToClinic({
   initialNote,
   onBack,
   onSent,
+  onBooked,
   onHandleHere,
 }: {
   patient: ReceptionPatient
@@ -31,6 +34,8 @@ export default function StepSendToClinic({
   initialNote?: string | null
   onBack: () => void
   onSent: (clinicName: string) => void
+  /** Booked for later instead of sent now. */
+  onBooked: (label: string) => void
   onHandleHere: () => void
 }) {
   const [clinics, setClinics] = useState<ClinicOption[] | null>(null)
@@ -38,6 +43,8 @@ export default function StepSendToClinic({
   const [note, setNote] = useState(initialNote ?? '')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  // Not seeing a doctor now: give them an appointment instead.
+  const [later, setLater] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -82,7 +89,23 @@ export default function StepSendToClinic({
         />
       </div>
 
+      {later ? (
+        <div className="mt-6 space-y-3">
+          <p className="text-sm font-medium text-ink-strong">Book {patient.full_name.split(' ')[0]} a time</p>
+          <BookSlot
+            clinics={(clinics ?? []).map(({ id, name }) => ({ id, name }))}
+            defaultNotes={note || null}
+            onCancel={() => setLater(false)}
+            onBook={async (slot, allowSecond) => {
+              const res = await createAppointment(slotForm(patient.id, slot, allowSecond))
+              if (res.ok) onBooked(slot.label)
+              return res
+            }}
+          />
+        </div>
+      ) : (
       <div className="mt-6 space-y-3">
+        <p className="text-sm font-medium text-ink-strong">Seeing a doctor now? Send them to:</p>
         {clinics === null && <p className="text-sm text-ink/40 py-4">Loading clinics…</p>}
 
         {clinics?.length === 0 && (
@@ -112,7 +135,22 @@ export default function StepSendToClinic({
             <Check size={18} className="text-ink/20" />
           </button>
         ))}
+
+        <button
+          type="button"
+          onClick={() => setLater(true)}
+          className="w-full flex items-center gap-3 rounded-control border border-dashed border-teal/40 bg-white px-4 py-3.5 text-left hover:bg-teal/[0.04] transition-colors"
+        >
+          <span className="flex h-10 w-10 items-center justify-center rounded-control bg-gold/10 text-gold-deep">
+            <CalendarPlus size={19} />
+          </span>
+          <span className="flex-1">
+            <span className="block text-base font-medium text-ink-strong">Book a time instead</span>
+            <span className="block text-xs text-ink/50">Pick the day and time; the clinic can be decided when they arrive</span>
+          </span>
+        </button>
       </div>
+      )}
 
       <div className="gold-hairline my-6" />
 

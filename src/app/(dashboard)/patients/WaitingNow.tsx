@@ -48,6 +48,8 @@ export default function WaitingNow({ rows }: { rows: WaitingRow[] }) {
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium text-ink-strong truncate">{r.name}</span>
               <span
+                // The minutes can tick over between the server's render and the browser's.
+                suppressHydrationWarning
                 className={`inline-flex shrink-0 items-center gap-1 text-xs ${
                   r.status === 'in_chair' ? 'text-teal-deep' : mins(r.since) >= 20 ? 'text-danger' : 'text-gold-deep'
                 }`}
