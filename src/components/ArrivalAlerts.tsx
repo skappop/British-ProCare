@@ -6,7 +6,7 @@ import { Bell, BellOff, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 const ENABLED_KEY = 'procare.alerts'
-const CLINIC_KEY = 'procare.clinic' // shared with ClinicSwitcher
+const CLINIC_KEY = 'procare.clinic' // this computer's clinic, set by ClinicSwitcher
 const FRESH_MS = 2 * 60 * 1000
 const TOAST_MS = 20 * 1000
 
@@ -67,8 +67,8 @@ const enabledOnServer = () => false
  * software.
  *
  * It is opt-in per device, because the same app runs at the reception desk
- * where these alerts would only be noise. It follows the clinic chosen on the
- * appointments board, so the doctor at Clinic 1 is not pinged for Clinic 2.
+ * where these alerts would only be noise. It rings only for this computer's
+ * clinic (set on the Patients page), so Clinic 1 is not pinged for Clinic 2.
  */
 export default function ArrivalAlerts() {
   const router = useRouter()

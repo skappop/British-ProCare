@@ -15,6 +15,8 @@ import {
   Wallet,
 } from 'lucide-react'
 import { updateAppointmentStatus, deleteAppointment } from './actions'
+import { CLINIC_KEY, mineFirst } from '@/components/ClinicSwitcher'
+import { useStoredValue } from '@/lib/useStoredValue'
 
 export type BoardAppointment = {
   id: string
@@ -59,6 +61,7 @@ function Card({
   appt,
   nowMs,
   canTakePayment,
+  elsewhere,
   onStatus,
   onRemove,
   pending,
@@ -66,6 +69,8 @@ function Card({
   appt: BoardAppointment
   nowMs: number
   canTakePayment: boolean
+  /** Booked into the other clinic: shown, but faded. */
+  elsewhere: boolean
   onStatus: (id: string, status: string) => void
   onRemove: (id: string) => void
   pending: boolean
@@ -85,7 +90,9 @@ function Card({
 
   return (
     <div
-      className={`rounded-control border shadow-soft px-3 py-2.5 space-y-2 ${
+      className={`rounded-control border shadow-soft px-3 py-2.5 space-y-2 transition-opacity ${
+        elsewhere ? 'opacity-55 hover:opacity-100' : ''
+      } ${
         seen
           ? `bg-success/[0.07] border-success/40 border-l-4 border-l-success ${settled ? 'opacity-70' : ''}`
           : 'bg-white border-ink/8'
@@ -283,6 +290,8 @@ export default function DayBoard({
   const [isPending, startTransition] = useTransition()
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [err, setErr] = useState<string | null>(null)
+  const [myClinic] = useStoredValue(CLINIC_KEY)
+  const mine = myClinic && appointments.some((a) => a.clinic_id === myClinic) ? myClinic : null
 
   useEffect(() => {
     const t = setInterval(() => setNowMs(Date.now()), 30000)
@@ -322,7 +331,12 @@ export default function DayBoard({
     })
   }
 
-  const inLane = (statuses: string[]) => appointments.filter((a) => statuses.includes(a.status))
+  const inLane = (statuses: string[]) =>
+    mineFirst(
+      appointments.filter((a) => statuses.includes(a.status)),
+      (a) => a.clinic_id,
+      mine
+    )
   const offRamp = appointments.filter((a) => a.status === 'no_show' || a.status === 'cancelled')
 
   return (
@@ -348,6 +362,7 @@ export default function DayBoard({
                     appt={a}
                     nowMs={nowMs}
                     canTakePayment={canTakePayment}
+                    elsewhere={!!mine && !!a.clinic_id && a.clinic_id !== mine}
                     onStatus={setStatus}
                     onRemove={remove}
                     pending={isPending}

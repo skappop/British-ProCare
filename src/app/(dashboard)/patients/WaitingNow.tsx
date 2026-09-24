@@ -4,16 +4,18 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { CheckCircle2, Clock, Stethoscope, Wallet } from 'lucide-react'
 import { useStoredValue } from '@/lib/useStoredValue'
+import { CLINIC_KEY, mineFirst } from '@/components/ClinicSwitcher'
 import type { WaitingRow } from './waiting'
 
 /**
  * Who is here, at the top of the patient list — the doctor's way into today's
  * patients without the appointments board. For reception it also lists who has
  * been seen and still has to pay; tapping one opens their billing.
- * Follows the clinic chosen on the board, if one was chosen on this device.
+ * This computer's clinic comes first; the other clinic's patients follow,
+ * faded, since staff move between clinics.
  */
 export default function WaitingNow({ rows }: { rows: WaitingRow[] }) {
-  const [clinic, setClinic] = useStoredValue('procare.clinic')
+  const [clinic] = useStoredValue(CLINIC_KEY)
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -21,8 +23,9 @@ export default function WaitingNow({ rows }: { rows: WaitingRow[] }) {
     return () => clearInterval(t)
   }, [])
 
-  const followed = clinic && rows.some((r) => r.clinic_id === clinic) ? clinic : null
-  const shown = followed ? rows.filter((r) => r.clinic_id === followed || !r.clinic_id) : rows
+  const mine = clinic && rows.some((r) => r.clinic_id === clinic) ? clinic : null
+  const shown = mineFirst(rows, (r) => r.clinic_id, mine)
+  const faded = (r: WaitingRow) => (mine && r.clinic_id && r.clinic_id !== mine ? 'opacity-55 hover:opacity-100' : '')
   const here = shown.filter((r) => r.status !== 'completed')
   const seen = shown.filter((r) => r.status === 'completed')
   if (rows.length === 0) return null
@@ -34,18 +37,13 @@ export default function WaitingNow({ rows }: { rows: WaitingRow[] }) {
     <div className="mb-6">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-xs uppercase tracking-[0.2em] text-gold-deep font-mono">Now</h2>
-        {followed && (
-          <button type="button" onClick={() => setClinic(null)} className="text-xs text-ink/45 hover:text-teal-deep">
-            Show all clinics
-          </button>
-        )}
       </div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
         {here.map((r) => (
           <Link
             key={r.appointment_id}
             href={`/patients/${r.patient_id}`}
-            className="rounded-card border border-gold/30 bg-gold/[0.05] px-4 py-3 transition-colors hover:border-teal"
+            className={`rounded-card border border-gold/30 bg-gold/[0.05] px-4 py-3 transition hover:border-teal ${faded(r)}`}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium text-ink-strong truncate">{r.name}</span>
@@ -68,7 +66,7 @@ export default function WaitingNow({ rows }: { rows: WaitingRow[] }) {
             key={r.appointment_id}
             href={`/patients/${r.patient_id}/billing`}
             title="Open billing to record the payment"
-            className="rounded-card border border-success/40 border-l-4 border-l-success bg-success/[0.07] px-4 py-3 transition-colors hover:bg-success/[0.12]"
+            className={`rounded-card border border-success/40 border-l-4 border-l-success bg-success/[0.07] px-4 py-3 transition hover:bg-success/[0.12] ${faded(r)}`}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium text-ink-strong truncate">{r.name}</span>

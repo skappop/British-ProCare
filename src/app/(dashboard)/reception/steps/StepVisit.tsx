@@ -9,11 +9,10 @@ import {
   getLastVisitSetup,
   getLastQuickLog,
 } from '../../patients/[id]/actions'
-import { updateTooth } from '../../patients/[id]/odontogramActions'
+import { saveTeeth } from '../../patients/[id]/odontogramActions'
 import OrthoQuickLog, { type QuickLogData } from '../../patients/[id]/OrthoQuickLog'
 import { getLatestVisit, getOdontogram } from '../receptionActions'
 import DentalChart, { type OdontogramData } from '@/components/dental/DentalChart'
-import type { ToothStatus } from '@/components/dental/toothStatus'
 import { StepCard, PrimaryButton, SectionLabel, Field, inputClass, inputMonoClass } from '../ui'
 
 type BomLine = { name: string; unit: string; stock: number; qty: number }
@@ -245,9 +244,7 @@ export default function StepVisit({
                 <DentalChart
                   compact
                   initial={chartData}
-                  onSaveTooth={(fdi: string, status: ToothStatus, note: string) =>
-                    updateTooth(patient.id, fdi, status, note)
-                  }
+                  onSave={(changes) => saveTeeth(patient.id, changes)}
                 />
               )}
             </div>

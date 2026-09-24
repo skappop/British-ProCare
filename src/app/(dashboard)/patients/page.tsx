@@ -4,6 +4,8 @@ import LiveRefresh from '@/components/LiveRefresh'
 import { canHandleMoney } from '@/lib/auth/role'
 import WaitingNow from './WaitingNow'
 import { getWaitingNow } from './waiting'
+import ClinicSwitcher from '@/components/ClinicSwitcher'
+import { getClinics } from '@/lib/clinics'
 
 export default async function PatientsPage({
   searchParams,
@@ -13,7 +15,7 @@ export default async function PatientsPage({
   const { q } = await searchParams
   const supabase = await createClient()
   const showBilling = await canHandleMoney()
-  const waiting = await getWaitingNow(showBilling)
+  const [waiting, clinics] = await Promise.all([getWaitingNow(showBilling), getClinics()])
 
   let query = supabase.from('patients').select('*').order('created_at', { ascending: false })
   if (q) {
@@ -43,10 +45,13 @@ export default async function PatientsPage({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <h1 className="font-display text-2xl text-ink-strong">Patients</h1>
           <LiveRefresh tables={['patients', 'appointments', 'payments']} />
+        </div>
+        <div className="ml-auto">
+          <ClinicSwitcher clinics={clinics} />
         </div>
         <Link
           href="/patients/new"

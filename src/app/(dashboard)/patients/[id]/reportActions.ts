@@ -1,5 +1,6 @@
 'use server'
 
+import { findingLabel, palmer, type OdontogramData } from '@/components/dental/charting'
 import { createClient } from '@/lib/supabase/server'
 
 export type ReportVisit = {
@@ -126,10 +127,17 @@ export async function getPatientReportData(patientId: string): Promise<PatientRe
     procedures: (v.visit_procedures ?? []).map((vp) => one(vp.procedures)?.name).filter((n): n is string => !!n),
   }))
 
-  const odo = (patient.odontogram as Record<string, { status: string; note?: string }>) || {}
+  const odo = (patient.odontogram as OdontogramData) || {}
   const findings: ReportFinding[] = Object.entries(odo)
-    .filter(([, v]) => v && v.status && v.status !== 'healthy')
-    .map(([fdi, v]) => ({ fdi, status: v.status, note: v.note }))
+    .filter(([, v]) => v && v.status && (v.status !== 'healthy' || v.note))
+    .map(([fdi, v]) => ({
+      fdi: `${fdi} (${palmer(fdi)})`,
+      status: v.status,
+      // What was charted, e.g. "Caries Class II (MO), Root canal treated".
+      note: [v.findings?.length ? v.findings.map(findingLabel).join(', ') : '', v.note ?? '']
+        .filter(Boolean)
+        .join(' — ') || undefined,
+    }))
     .sort((a, b) => a.fdi.localeCompare(b.fdi, undefined, { numeric: true }))
 
   type PlanRow = {

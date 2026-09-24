@@ -33,15 +33,14 @@ export default async function AppointmentsPage({
 }: {
   searchParams: Promise<{ view?: string; date?: string; clinic?: string }>
 }) {
-  const { view: viewParam, date: dateParam, clinic: clinicParam } = await searchParams
+  const { view: viewParam, date: dateParam } = await searchParams
   const view = viewParam === 'week' ? 'week' : 'day'
   const anchor = dateParam ? new Date(`${dateParam}T00:00:00`) : new Date()
 
   const supabase = await createClient()
   const clinics = await getClinics()
 
-  // An unknown id would silently show nothing, so fall back to all.
-  const activeClinic = clinics.some((c) => c.id === clinicParam) ? clinicParam! : 'all'
+  // Every clinic is always listed; the board puts this computer's clinic first.
 
   const rangeStart = view === 'week' ? startOfWeek(anchor) : startOfDay(anchor)
   const rangeEnd = view === 'week' ? addDays(rangeStart, 7) : addDays(rangeStart, 1)
@@ -50,13 +49,11 @@ export default async function AppointmentsPage({
     'id, scheduled_at, duration_minutes, status, notes, arrived_at, seated_at, patients(id, full_name, phone, is_ortho)'
 
   async function fetchAppointments(withClinic: boolean) {
-    let query = supabase
+    const query = supabase
       .from('appointments')
       .select(withClinic ? `${BASE_COLUMNS}, clinic_id` : BASE_COLUMNS)
       .gte('scheduled_at', rangeStart.toISOString())
       .lt('scheduled_at', rangeEnd.toISOString())
-
-    if (withClinic && activeClinic !== 'all') query = query.eq('clinic_id', activeClinic)
 
     return query.order('scheduled_at', { ascending: true })
   }
@@ -117,7 +114,6 @@ export default async function AppointmentsPage({
 
   const prevDate = toDateStr(addDays(anchor, view === 'week' ? -7 : -1))
   const nextDate = toDateStr(addDays(anchor, view === 'week' ? 7 : 1))
-  const clinicQs = activeClinic === 'all' ? '' : `&clinic=${activeClinic}`
   const todayStr = toDateStr(new Date())
   const isToday = toDateStr(anchor) === todayStr
 
@@ -131,17 +127,17 @@ export default async function AppointmentsPage({
             <LiveRefresh tables={['appointments', 'visits', 'payments']} />
           </div>
         </div>
-        <ClinicSwitcher clinics={clinics} active={activeClinic} />
+        <ClinicSwitcher clinics={clinics} />
         <div className="hidden" />
         <div className="flex rounded-control border border-ink/15 overflow-hidden">
           <Link
-            href={`/appointments?view=day&date=${dateParam || todayStr}${clinicQs}`}
+            href={`/appointments?view=day&date=${dateParam || todayStr}`}
             className={`px-3 py-1.5 text-xs ${view === 'day' ? 'bg-teal text-white' : 'bg-white text-ink/60 hover:bg-marble/60'}`}
           >
             Day tracker
           </Link>
           <Link
-            href={`/appointments?view=week&date=${dateParam || todayStr}${clinicQs}`}
+            href={`/appointments?view=week&date=${dateParam || todayStr}`}
             className={`px-3 py-1.5 text-xs ${view === 'week' ? 'bg-teal text-white' : 'bg-white text-ink/60 hover:bg-marble/60'}`}
           >
             Week
@@ -152,19 +148,19 @@ export default async function AppointmentsPage({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Link
-            href={`/appointments?view=${view}&date=${prevDate}${clinicQs}`}
+            href={`/appointments?view=${view}&date=${prevDate}`}
             className="px-3 py-1.5 rounded-control border border-ink/15 text-xs text-ink/60 hover:bg-marble/60"
           >
             ← Prev
           </Link>
           <Link
-            href={`/appointments?view=${view}&date=${todayStr}${clinicQs}`}
+            href={`/appointments?view=${view}&date=${todayStr}`}
             className="px-3 py-1.5 rounded-control border border-gold/40 text-xs text-gold-deep hover:bg-gold/10"
           >
             Today
           </Link>
           <Link
-            href={`/appointments?view=${view}&date=${nextDate}${clinicQs}`}
+            href={`/appointments?view=${view}&date=${nextDate}`}
             className="px-3 py-1.5 rounded-control border border-ink/15 text-xs text-ink/60 hover:bg-marble/60"
           >
             Next →

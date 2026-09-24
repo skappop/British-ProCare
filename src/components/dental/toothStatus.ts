@@ -14,8 +14,8 @@ export type ToothStyle = {
 export const TOOTH_STYLE: Record<ToothStatus, ToothStyle> = {
   healthy: { fill: '#FBFAF7', stroke: '#AEB6BD', line: '#CBD1D6', label: 'Healthy' },
   treated: { fill: '#E3F4F2', stroke: '#2FA6A2', line: '#7BD0CC', label: 'Treated' },
-  planned: { fill: '#F4EBDA', stroke: '#A07B4A', line: '#CBB081', label: 'Planned' },
-  watch: { fill: '#F6E5E0', stroke: '#C0654F', line: '#D69A8B', label: 'Watch' },
+  planned: { fill: '#F4EBDA', stroke: '#A07B4A', line: '#CBB081', label: 'Needs treatment' },
+  watch: { fill: '#F6E5E0', stroke: '#C0654F', line: '#D69A8B', label: 'Decay / problem' },
   missing: { fill: 'none', stroke: '#D2D6DA', line: '#D2D6DA', label: 'Missing' },
 }
 

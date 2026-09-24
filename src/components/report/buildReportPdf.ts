@@ -23,7 +23,7 @@ const CREAM: RGB = [237, 232, 223]
 const BORDER: RGB = [231, 228, 221]
 
 const TOOTH_STATUS: Record<string, string> = {
-  treated: 'Treated', planned: 'Planned', watch: 'Watch', missing: 'Missing', healthy: 'Healthy',
+  treated: 'Treated', planned: 'Needs treatment', watch: 'Decay / problem', missing: 'Missing', healthy: 'Healthy',
 }
 
 const IMAGE_TYPE: Record<string, string> = {
@@ -312,11 +312,11 @@ export function buildReportPdf(
     // ---- dental chart -----------------------------------------------------------
     sectionTitle('Dental chart')
     table(
-      ['Tooth (FDI)', 'Status', 'Note'],
+      ['Tooth', 'Status', 'Findings'],
       report.findings.length
         ? report.findings.map((f) => [f.fdi, TOOTH_STATUS[f.status] || label(f.status), f.note || ''])
         : [['—', 'No findings charted', '']],
-      [26, 28, contentW - 54],
+      [26, 32, contentW - 58],
       TEAL
     )
 
