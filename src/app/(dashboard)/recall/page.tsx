@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
+import { fetchAll } from '@/lib/supabase/fetchAll'
 
 const SIX_MONTHS_MS = 1000 * 60 * 60 * 24 * 30 * 6
 
@@ -19,32 +20,42 @@ function waMessage(name: string) {
 export default async function RecallPage() {
   const supabase = await createClient()
 
-  const [{ data: patients }, { data: visits }, { data: futureAppts }] = await Promise.all([
-    supabase.from('patients').select('id, full_name, phone, is_ortho'),
-    supabase
-      .from('visits')
-      .select('patient_id, visit_date, ortho_quick_log')
-      .order('visit_date', { ascending: false }),
-    supabase
-      .from('appointments')
-      .select('patient_id')
-      .eq('status', 'scheduled')
-      .gte('scheduled_at', new Date().toISOString()),
+  // Every patient with only their latest visit, a page at a time: all of
+  // them, however many (a single request stops at 1,000 rows).
+  type Row = { id: string; full_name: string; phone: string | null; is_ortho: boolean; visits: { visit_date: string; ortho_quick_log: any }[] }
+  const [{ data: patients }, { data: futureAppts }] = await Promise.all([
+    fetchAll<Row>((from, to) =>
+      supabase
+        .from('patients')
+        .select('id, full_name, phone, is_ortho, visits(visit_date, ortho_quick_log)')
+        .order('visit_date', { referencedTable: 'visits', ascending: false })
+        .limit(1, { referencedTable: 'visits' })
+        .order('id')
+        .range(from, to)
+    ),
+    fetchAll<{ patient_id: string }>((from, to) =>
+      supabase
+        .from('appointments')
+        .select('patient_id')
+        .eq('status', 'scheduled')
+        .gte('scheduled_at', new Date().toISOString())
+        .order('id')
+        .range(from, to)
+    ),
   ])
 
-  // Most recent visit per patient (visits already ordered desc, keep first hit)
   const lastVisitByPatient: Record<string, { visit_date: string; ortho_quick_log: any }> = {}
-  for (const v of visits || []) {
-    if (!lastVisitByPatient[v.patient_id]) lastVisitByPatient[v.patient_id] = v
+  for (const p of patients) {
+    if (p.visits?.[0]) lastVisitByPatient[p.id] = p.visits[0]
   }
 
-  const bookedPatientIds = new Set((futureAppts || []).map((a) => a.patient_id))
+  const bookedPatientIds = new Set(futureAppts.map((a) => a.patient_id))
   const now = Date.now()
 
   type OverdueRow = { patient: any; reason: string; dueSince: Date }
   const overdue: OverdueRow[] = []
 
-  for (const p of patients || []) {
+  for (const p of patients) {
     if (bookedPatientIds.has(p.id)) continue
     const lastVisit = lastVisitByPatient[p.id]
     if (!lastVisit) continue // never had a visit — not a recall case

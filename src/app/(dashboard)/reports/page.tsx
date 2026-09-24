@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { isOwner } from '@/lib/auth/role'
+import { fetchAll } from '@/lib/supabase/fetchAll'
 
 const CATEGORY_LABELS: Record<string, string> = {
   general: 'General',
@@ -47,17 +48,28 @@ export default async function ReportsPage({
 
   const supabase = await createClient()
 
+  // All of the month, however busy (not just the first 1,000 rows).
   const [{ data: visits }, { data: payments }] = await Promise.all([
-    supabase
-      .from('visits')
-      .select('id, visit_date, fee_charged, visit_procedures(procedures(name, category, base_fee))')
-      .gte('visit_date', start.toISOString())
-      .lt('visit_date', end.toISOString()),
-    supabase
-      .from('payments')
-      .select('amount, paid_at')
-      .gte('paid_at', start.toISOString())
-      .lt('paid_at', end.toISOString()),
+    fetchAll((from, to) =>
+      supabase
+        .from('visits')
+        .select('id, visit_date, fee_charged, visit_procedures(procedures(name, category, base_fee))')
+        .gte('visit_date', start.toISOString())
+        .lt('visit_date', end.toISOString())
+        .order('visit_date')
+        .order('id')
+        .range(from, to)
+    ),
+    fetchAll((from, to) =>
+      supabase
+        .from('payments')
+        .select('amount, paid_at')
+        .gte('paid_at', start.toISOString())
+        .lt('paid_at', end.toISOString())
+        .order('paid_at')
+        .order('id')
+        .range(from, to)
+    ),
   ])
 
   const totalCharged = (visits || []).reduce((s, v: any) => s + (Number(v.fee_charged) || 0), 0)
