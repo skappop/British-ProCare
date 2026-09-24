@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { uploadImage } from '../imageActions'
+import { shrinkForWeb } from '@/lib/webImage'
 
 const IMAGE_TYPES = [
   'intraoral_front', 'intraoral_left', 'intraoral_right',
@@ -16,6 +17,8 @@ export default function UploadForm({ patientId }: { patientId: string }) {
   function handleSubmit(formData: FormData) {
     formData.set('patient_id', patientId)
     startTransition(async () => {
+      const file = formData.get('file')
+      if (file instanceof File && file.size > 0) formData.set('file', await shrinkForWeb(file))
       const res = await uploadImage(formData)
       setResult(res)
       if (res.ok) {

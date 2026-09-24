@@ -2,13 +2,17 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { determineCategory, imageTypeFor } from '@/lib/bridge'
 
-// Server-side Supabase client with service role for uploads
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY!
-)
+// Created per request, not when the file loads: building the site must not
+// need the Supabase keys (Cloudflare and other hosts build without them).
+function serviceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY!
+  )
+}
 
 export async function POST(request: Request) {
+  const supabase = serviceClient()
   try {
     const authHeader = request.headers.get('authorization')
     const apiKey = process.env.BRIDGE_API_KEY

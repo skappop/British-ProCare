@@ -11,8 +11,10 @@ import logging
 import mimetypes
 import os
 import re
+import shutil
 import socket
 import subprocess
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -20,7 +22,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 import requests
 
-AGENT_VERSION = "3.0.0"
+AGENT_VERSION = "3.1.0"
 PROTOCOL_PORT = 47281
 
 log = logging.getLogger("procare.agent")
@@ -135,30 +137,41 @@ class Api:
         if not files:
             return [], []
 
+        workdir = Path(tempfile.mkdtemp(prefix="procare-web-"))
+        try:
+            # (original on this PC, what actually goes up)
+            pairs = [(f, web_copy(f, workdir)) for f in files]
+            return self._upload_pairs(patient_id, pairs, metadata)
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+    def _upload_pairs(
+        self, patient_id: str, pairs: List[Tuple[Path, Path]], metadata: Dict
+    ) -> Tuple[List[Path], List[Tuple[Path, str]]]:
         status, payload = self._post(
             "/api/bridge/upload-url",
-            {"patient_id": patient_id, "filenames": [f.name for f in files]},
+            {"patient_id": patient_id, "filenames": [web.name for _, web in pairs]},
         )
         if status != 200:
             reason = payload.get("error") or f"HTTP {status}"
-            return [], [(f, reason) for f in files]
+            return [], [(f, reason) for f, _ in pairs]
 
         slots: Dict[str, List[Dict]] = {}
         for item in payload.get("uploads", []):
             slots.setdefault(item["filename"], []).append(item)
 
         stored, failures = [], []
-        for path in files:
-            available = slots.get(path.name)
+        for original, web in pairs:
+            available = slots.get(web.name)
             if not available:
-                failures.append((path, "no upload link returned"))
+                failures.append((original, "no upload link returned"))
                 continue
             slot = available.pop(0)
-            error = self._put(path, slot["signed_url"])
+            error = self._put(web, slot["signed_url"])
             if error:
-                failures.append((path, error))
+                failures.append((original, error))
             else:
-                stored.append((path, slot))
+                stored.append((original, web, slot))
 
         if not stored:
             return [], failures
@@ -170,11 +183,11 @@ class Api:
                 "images": [
                     {
                         "path": slot["path"],
-                        "filename": path.name,
+                        "filename": web.name,
                         "category": slot.get("category"),
-                        "size": _size(path),
+                        "size": _size(web),
                     }
-                    for path, slot in stored
+                    for _, web, slot in stored
                 ],
                 "metadata": metadata,
             },
@@ -182,12 +195,12 @@ class Api:
         )
         if status != 200:
             reason = _describe(payload, status)
-            return [], failures + [(path, reason) for path, _ in stored]
+            return [], failures + [(original, reason) for original, _, _ in stored]
 
         # The register step can reject individual rows; map those back to files.
         rejected = {e.get("file"): e.get("error", "rejected") for e in payload.get("errors") or []}
-        uploaded = [path for path, _ in stored if path.name not in rejected]
-        failures += [(path, rejected[path.name]) for path, _ in stored if path.name in rejected]
+        uploaded = [original for original, web, _ in stored if web.name not in rejected]
+        failures += [(original, rejected[web.name]) for original, web, _ in stored if web.name in rejected]
         return uploaded, failures
 
     def _put(self, path: Path, url: str) -> Optional[str]:
@@ -205,6 +218,64 @@ class Api:
             if attempt < 2:
                 self.sleep(2 ** attempt)
         return last
+
+
+# ---------------------------------------------------------------------------
+# Web copies: the imaging software keeps the full-quality original on this PC
+# (and the nightly backup copies it); the website only needs a copy good for
+# viewing on screens and in PDFs. Shrinking it is what keeps online storage
+# small enough for the free plan.
+# ---------------------------------------------------------------------------
+
+WEB_MAX_SIDE = 2400
+WEB_QUALITY_COLOUR = 85
+WEB_QUALITY_GREY = 90  # X-rays: grey only, so a little more quality costs little
+WEB_SMALL_JPEG = 800_000  # bytes
+SHRINKABLE = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+
+
+def web_copy(path: Path, workdir: Path) -> Path:
+    """
+    A JPEG no larger than WEB_MAX_SIDE on its longest side, written into
+    `workdir`, or the original path when shrinking would not help (already
+    small, not a picture Pillow can read, DICOM, or Pillow missing).
+    """
+    if path.suffix.lower() not in SHRINKABLE:
+        return path
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        return path
+    try:
+        with Image.open(path) as im:
+            # A JPEG that is already web-sized is left alone: compressing it a
+            # second time costs quality for almost no saving.
+            if im.format == "JPEG" and max(im.size) <= WEB_MAX_SIDE and (_size(path) or 0) <= WEB_SMALL_JPEG:
+                return path
+            im = ImageOps.exif_transpose(im)
+            grey = im.mode in ("L", "I", "I;16", "1")
+            if grey:
+                im = im.convert("L")
+            elif im.mode != "RGB":
+                # Transparent PNGs get a white background; JPEG has no alpha.
+                rgba = im.convert("RGBA")
+                im = Image.new("RGB", rgba.size, (255, 255, 255))
+                im.paste(rgba, mask=rgba.split()[-1])
+            im.thumbnail((WEB_MAX_SIDE, WEB_MAX_SIDE), Image.LANCZOS)
+            out = workdir / f"{path.stem}.jpg"
+            n = 1
+            while out.exists():
+                out = workdir / f"{path.stem}_{n}.jpg"
+                n += 1
+            im.save(out, "JPEG", quality=WEB_QUALITY_GREY if grey else WEB_QUALITY_COLOUR, optimize=True)
+    except Exception as exc:  # a picture we cannot read still uploads as-is
+        log.info("Uploading %s unchanged (%s)", path.name, exc)
+        return path
+    original, shrunk = _size(path) or 0, _size(out) or 0
+    if not shrunk or shrunk >= original * 0.9:
+        return path
+    log.info("Web copy of %s: %.1f MB -> %.2f MB", path.name, original / 1e6, shrunk / 1e6)
+    return out
 
 
 def _size(path: Path) -> Optional[int]:

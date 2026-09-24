@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { isOwner, guardPage } from '@/lib/auth/role'
 import { DoorOpen } from 'lucide-react'
+import StorageGauge from '@/components/StorageGauge'
 
 export default async function DashboardPage() {
   // Takings and totals: the owner's view. Everyone else starts on their own page.
@@ -169,6 +170,8 @@ export default async function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      <StorageGauge />
     </div>
   )
 }

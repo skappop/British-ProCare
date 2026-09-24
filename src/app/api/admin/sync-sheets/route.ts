@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { fetchPatientDataFromSheet } from '@/lib/google-sheets'
 
-// Server-side Supabase client with service role
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY!
-)
+// Created per request, not when the file loads: building the site must not
+// need the Supabase keys (Cloudflare and other hosts build without them).
+function serviceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY!
+  )
+}
 
 /**
  * Sync patients from Google Sheets to database
@@ -15,6 +18,7 @@ const supabase = createClient(
  * Body: { spreadsheetId, range?, forceUpdate? }
  */
 export async function POST(request: Request) {
+  const supabase = serviceClient()
   try {
     // Verify admin authentication
     const authHeader = request.headers.get('authorization')
@@ -208,6 +212,7 @@ function buildUpdateData(existingPatient: any, sheetPatient: any, forceUpdate: b
  * GET /api/admin/sync-sheets
  */
 export async function GET(request: Request) {
+  const supabase = serviceClient()
   try {
     // Verify admin authentication
     const authHeader = request.headers.get('authorization')
