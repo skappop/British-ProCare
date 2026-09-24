@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { CalendarClock } from 'lucide-react'
 import { getBookingsBetween, type DayBooking } from '@/app/(dashboard)/appointments/actions'
 import { localDateTimeToIso } from '@/lib/utils'
-import { useStoredValue } from '@/lib/useStoredValue'
 
 export type Slot = {
   iso: string
@@ -20,7 +19,6 @@ export type Slot = {
 
 type BookResult = { ok: boolean; message?: string; duplicate?: boolean }
 
-const REASONS = ['Check-up', 'Consultation', 'Follow-up', 'Treatment', 'Ortho adjustment']
 const LATER = 'later'
 
 function isoDay(offsetDays: number) {
@@ -57,9 +55,10 @@ export default function BookSlot({
 }) {
   const [date, setDate] = useState(defaultDate || isoDay(0))
   const [time, setTime] = useState('')
-  const [duration, setDuration] = useState(30)
-  const [notes, setNotes] = useState(defaultNotes ?? '')
-  const [myClinic] = useStoredValue('procare.clinic')
+  // Reception books the time; the doctor decides the treatment. A note the
+  // patient or reception already gave (e.g. from the online form) still goes along.
+  const duration = 30
+  const notes = defaultNotes ?? ''
   const [clinic, setClinic] = useState<string>(LATER)
   const [day, setDay] = useState<{ date: string; items: DayBooking[] } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -147,13 +146,6 @@ export default function BookSlot({
           ))}
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${field} font-mono`} aria-label="Day" />
           <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={`${field} font-mono`} aria-label="Time" step={300} />
-          <select value={duration} onChange={(e) => setDuration(Number(e.target.value))} className={field} aria-label="Length">
-            {[15, 30, 45, 60, 90].map((m) => (
-              <option key={m} value={m}>
-                {m} min
-              </option>
-            ))}
-          </select>
         </div>
         {/* The day so far */}
         <div className="rounded-control bg-marble/60 px-2.5 py-2 text-xs text-ink/60">
@@ -181,25 +173,6 @@ export default function BookSlot({
         {inPast && <p className="text-xs text-danger">That time has already passed.</p>}
       </div>
 
-      {/* What for */}
-      <div className="space-y-1.5">
-        <p className="text-xs text-ink/60">What for</p>
-        <div className="flex flex-wrap gap-1.5">
-          {REASONS.map((r) => (
-            <button key={r} type="button" onClick={() => setNotes(notes === r ? '' : r)} className={chip(notes === r)}>
-              {r}
-            </button>
-          ))}
-        </div>
-        <input
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Or type it: e.g. pain upper right, bracket rebond"
-          className={`${field} w-full`}
-          aria-label="What the appointment is for"
-        />
-      </div>
-
       {/* Where */}
       {clinics.length > 0 && (
         <div className="space-y-1.5">
@@ -211,7 +184,6 @@ export default function BookSlot({
             {clinics.map((c) => (
               <button key={c.id} type="button" onClick={() => setClinic(c.id)} className={chip(clinic === c.id)}>
                 {c.name}
-                {c.id === myClinic ? ' (this computer)' : ''}
               </button>
             ))}
           </div>
