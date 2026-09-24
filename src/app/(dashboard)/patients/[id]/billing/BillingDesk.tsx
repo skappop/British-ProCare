@@ -39,10 +39,14 @@ export default function BillingDesk({
   const value = Number(amount)
   const label = PAYMENT_METHODS.find((m) => m.value === method)?.label ?? ''
 
-  function pay() {
+  const [duplicate, setDuplicate] = useState<string | null>(null)
+
+  function pay(confirmDuplicate = false) {
     setError(null)
+    setDuplicate(null)
     startTransition(async () => {
-      const res = await takePayment({ patientId, amount, method, note })
+      const res = await takePayment({ patientId, amount, method, note, confirmDuplicate })
+      if (res.duplicate) return setDuplicate(res.message)
       if (!res.ok) return setError(res.message)
       setDone({ message: res.message, paymentId: res.paymentId })
       setAmount('')
@@ -108,6 +112,19 @@ export default function BillingDesk({
           </div>
         )}
         {error && <div className="rounded-control bg-danger/10 px-4 py-3 text-sm text-danger">{error}</div>}
+        {duplicate && (
+          <div className="space-y-2 rounded-control bg-gold/10 px-4 py-3 text-sm text-ink-strong">
+            <p>{duplicate}</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setDuplicate(null)} className="rounded-control border border-ink/15 bg-white px-3 py-2 text-sm">
+                No — same money, don’t record
+              </button>
+              <button type="button" onClick={() => pay(true)} disabled={isPending} className="rounded-control bg-teal px-3 py-2 text-sm text-white">
+                Yes, record it
+              </button>
+            </div>
+          </div>
+        )}
 
         <label className="block">
           <span className="text-sm text-ink/60">Amount received</span>
@@ -159,8 +176,8 @@ export default function BillingDesk({
 
         <button
           type="button"
-          onClick={pay}
-          disabled={isPending || !(value > 0)}
+          onClick={() => pay()}
+          disabled={isPending || !(value > 0) || !!duplicate}
           className="w-full rounded-control bg-teal py-3 text-base font-medium text-white hover:bg-teal-deep disabled:bg-ink/20"
         >
           {isPending ? 'Saving…' : value > 0 ? `Record ${egp(value)} · ${label}` : 'Enter the amount'}

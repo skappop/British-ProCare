@@ -27,8 +27,11 @@ export default function StepPayment({
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  function record() {
+  const [duplicate, setDuplicate] = useState<string | null>(null)
+
+  function record(confirmDuplicate = false) {
     setError(null)
+    setDuplicate(null)
     const value = parseFloat(amount)
     if (!value || value <= 0) {
       setError('Enter a valid payment amount')
@@ -36,8 +39,17 @@ export default function StepPayment({
     }
 
     startTransition(async () => {
-      const res = await takePayment({ patientId: patient.id, amount: value, method, note: paymentNote, visitId: visit.id || null })
-      if (res.ok) {
+      const res = await takePayment({
+        patientId: patient.id,
+        amount: value,
+        method,
+        note: paymentNote,
+        visitId: visit.id || null,
+        confirmDuplicate,
+      })
+      if (res.duplicate) {
+        setDuplicate(res.message)
+      } else if (res.ok) {
         onDone({ amount: value, method, paymentId: res.paymentId })
       } else {
         setError(res.message)
@@ -48,6 +60,19 @@ export default function StepPayment({
   return (
     <StepCard title="Payment" subtitle={patient.full_name} onBack={onBack}>
       {error && <div className="bg-danger/10 text-danger text-sm px-4 py-3 rounded-control mb-4">{error}</div>}
+      {duplicate && (
+        <div className="mb-4 space-y-2 rounded-control bg-gold/10 px-4 py-3 text-sm text-ink-strong">
+          <p>{duplicate}</p>
+          <div className="flex gap-2">
+            <button type="button" onClick={onSkip} className="rounded-control border border-ink/15 bg-white px-3 py-2 text-sm">
+              No — same money, don’t record
+            </button>
+            <button type="button" onClick={() => record(true)} disabled={isPending} className="rounded-control bg-teal px-3 py-2 text-sm text-white">
+              Yes, record it
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-6">
         <div className="rounded-control bg-marquina text-white px-5 py-4 flex items-center justify-between">
@@ -111,7 +136,7 @@ export default function StepPayment({
 
       <div className="flex items-center justify-between mt-6">
         <GhostButton onClick={onSkip}>Pay later</GhostButton>
-        <PrimaryButton onClick={record} disabled={isPending}>
+        <PrimaryButton onClick={() => record()} disabled={isPending || !!duplicate}>
           <span className="inline-flex items-center gap-1.5">
             <Wallet size={15} />
             {isPending ? 'Saving…' : 'Record payment →'}

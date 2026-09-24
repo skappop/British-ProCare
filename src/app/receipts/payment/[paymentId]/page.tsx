@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { guardPage } from '@/lib/auth/role'
 import { methodLabel } from '@/app/(dashboard)/patients/[id]/billing/methods'
 import PrintButton from '../../PrintButton'
 
@@ -15,6 +16,7 @@ const egp = (n: number) => `EGP ${(Math.round(n * 100) / 100).toLocaleString()}`
  */
 export default async function PaymentReceipt({ params }: { params: Promise<{ paymentId: string }> }) {
   const { paymentId } = await params
+  await guardPage('/receipts')
   const supabase = await createClient()
 
   const { data: payment } = await supabase

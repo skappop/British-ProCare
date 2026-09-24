@@ -67,7 +67,30 @@ export async function submitRegistration(
     return { ok: false, message: 'Registration is not available right now. Please register at reception.' }
   }
 
-  const { error } = await admin.from('patient_registrations').insert({
+  // A flood of submissions is not patients: stop before the list fills up.
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60_000).toISOString()
+  const { count: recentCount } = await admin
+    .from('patient_registrations')
+    .select('id', { count: 'exact', head: true })
+    .gte('created_at', tenMinutesAgo)
+  if ((recentCount ?? 0) >= 40) {
+    return { ok: false, message: 'We are receiving a lot of registrations right now. Please register at reception.' }
+  }
+
+  // Submitted twice (a double tap, or back and submit again): update the one
+  // reception has not handled yet instead of adding a second copy. Same phone
+  // AND same name, since family members often share a phone.
+  const dayAgo = new Date(Date.now() - 24 * 3600_000).toISOString()
+  const sameName = (n: string) => n.trim().toLowerCase().replace(/\s+/g, ' ')
+  const { data: pending } = await admin
+    .from('patient_registrations')
+    .select('id, full_name')
+    .eq('phone', data.phone)
+    .eq('status', 'pending')
+    .gte('created_at', dayAgo)
+    .order('created_at', { ascending: false })
+  const existing = (pending ?? []).filter((r) => sameName(String(r.full_name)) === sameName(data.full_name))
+  const row = {
     full_name: data.full_name,
     phone: data.phone,
     date_of_birth: data.date_of_birth && DATE.test(data.date_of_birth) ? data.date_of_birth : null,
@@ -81,7 +104,10 @@ export async function submitRegistration(
       notes: data.health_note || null,
     },
     consent: true,
-  })
+  }
+  const { error } = existing?.length
+    ? await admin.from('patient_registrations').update(row).eq('id', existing[0].id)
+    : await admin.from('patient_registrations').insert(row)
 
   if (error) {
     console.error('registration insert failed:', error.message)
