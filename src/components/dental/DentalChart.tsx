@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Baby, Check, CornerDownLeft, HelpCircle, Loader2, Undo2, X } from 'lucide-react'
+import { Baby, Check, CornerDownLeft, HelpCircle, Keyboard, Loader2, Undo2, X } from 'lucide-react'
 import ToothGlyph from './ToothGlyph'
 import { toothTypeFor, PERMANENT_UPPER, PERMANENT_LOWER, PRIMARY_UPPER, PRIMARY_LOWER } from './toothGeometry'
 import { TOOTH_STYLE, STATUS_ORDER } from './toothStatus'
@@ -54,6 +54,23 @@ const PALETTE: { title: string; codes: string[] }[] = [
   { title: 'Other', codes: ['missing', 'impacted', 'watch'] },
 ]
 const SURFACE_KEYS = ['M', 'O', 'D', 'B', 'L', 'I']
+
+// Button text: short enough that a phone fits several per row.
+const BUTTON_LABEL: Record<string, string> = {
+  c1: 'C1', c2: 'C2', c3: 'C3', c4: 'C4', c5: 'C5', c6: 'C6',
+  fracture: 'Fracture', root: 'Root', mobile: 'Mobile',
+  extract: 'Extract', need_rct: 'Needs RCT', need_crown: 'Needs crown', need_filling: 'Needs filling',
+  filling: 'Filling', amalgam: 'Amalgam', rct: 'RCT done', crown: 'Crown', bridge: 'Bridge', implant: 'Implant',
+  missing: 'Missing', impacted: 'Impacted', watch: 'Watch',
+}
+
+// What a phone shows first; the rest is one tap away under "More".
+const COMMON = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'missing', 'filling', 'rct', 'crown', 'extract', 'fracture']
+
+/** A mouse and keyboard, as opposed to a phone or tablet. */
+function hasKeyboard() {
+  return typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches
+}
 
 function localDay(iso: string) {
   const d = new Date(iso)
@@ -109,14 +126,14 @@ const Tooth = memo(function Tooth({
   tooth,
   upper,
   selected,
-  gapBefore,
+  scale,
   onTap,
 }: {
   fdi: string
   tooth: ToothData | undefined
   upper: boolean
   selected: boolean
-  gapBefore: boolean
+  scale: number
   onTap: (fdi: string) => void
 }) {
   const primary = isPrimary(fdi)
@@ -145,14 +162,14 @@ const Tooth = memo(function Tooth({
     <button
       type="button"
       onClick={() => onTap(fdi)}
+      data-fdi={fdi}
       title={`${palmer(fdi)} · ${fdi}${findings.length ? ' — ' + findings.map(findingLabel).join(', ') : ''}`}
-      style={{ marginLeft: gapBefore ? 14 : 0 }}
       className={`relative flex shrink-0 flex-col items-center gap-1 rounded-lg px-0.5 py-1 transition-colors ${
         selected ? 'bg-teal/[0.12] ring-2 ring-teal' : 'hover:bg-marble active:bg-cream'
       }`}
     >
       {upper ? codes : number}
-      <ToothGlyph type={toothTypeFor(fdi, primary)} status={status} upper={upper} primary={primary} scale={primary ? 0.8 : 0.92} />
+      <ToothGlyph type={toothTypeFor(fdi, primary)} status={status} upper={upper} primary={primary} scale={(primary ? 0.8 : 0.92) * scale} />
       {upper ? number : codes}
     </button>
   )
@@ -163,27 +180,41 @@ function Arch({
   upper,
   data,
   selected,
+  scale,
   onTap,
 }: {
   codes: string[]
   upper: boolean
   data: OdontogramData
   selected: string | null
+  scale: number
   onTap: (fdi: string) => void
 }) {
   const half = codes.length / 2
+  // Each side of the mouth is its own row group: side by side on a computer,
+  // one under the other on a phone, so every tooth is big enough to tap
+  // without scrolling sideways.
+  const sides = [codes.slice(0, half), codes.slice(half)]
   return (
-    <div className="mx-auto flex w-max items-end justify-center gap-[3px]">
-      {codes.map((fdi, i) => (
-        <Tooth
-          key={fdi}
-          fdi={fdi}
-          tooth={data[fdi]}
-          upper={upper}
-          selected={selected === fdi}
-          gapBefore={i === half}
-          onTap={onTap}
-        />
+    <div className="flex flex-wrap items-end justify-center gap-x-[14px] gap-y-2">
+      {sides.map((side) => (
+        <div key={side[0]} className="flex flex-col items-center">
+          {upper && <span className="text-[9px] font-mono uppercase tracking-wider text-ink/35 sm:hidden">{palmer(side[0]).slice(0, 2)}</span>}
+          <div className="flex items-end gap-[3px]">
+            {side.map((fdi) => (
+              <Tooth
+                key={fdi}
+                fdi={fdi}
+                tooth={data[fdi]}
+                upper={upper}
+                selected={selected === fdi}
+                scale={scale}
+                onTap={onTap}
+              />
+            ))}
+          </div>
+          {!upper && <span className="text-[9px] font-mono uppercase tracking-wider text-ink/35 sm:hidden">{palmer(side[0]).slice(0, 2)}</span>}
+        </div>
       ))}
     </div>
   )
@@ -199,12 +230,32 @@ export default function DentalChart({
   initial,
   onSave,
   compact = false,
+  large = false,
 }: {
   initial: OdontogramData
   onSave: (changes: Record<string, ToothData | null>) => Promise<SaveResult>
   compact?: boolean
+  /** Bigger teeth, for the phone charting page. */
+  large?: boolean
 }) {
   const [data, setData] = useState<OdontogramData>(initial || {})
+  // Teeth changed here and not yet confirmed saved: kept when someone else's
+  // charting arrives, so a live update never undoes what was just tapped.
+  const [dirty, setDirty] = useState<Record<string, true>>({})
+  const [seenInitial, setSeenInitial] = useState(initial)
+  if (initial !== seenInitial) {
+    setSeenInitial(initial)
+    const merged: OdontogramData = { ...(initial || {}) }
+    for (const fdi of Object.keys(dirty)) {
+      if (data[fdi]) merged[fdi] = data[fdi]
+      else delete merged[fdi]
+    }
+    setData(merged)
+  }
+  const [typing, setTyping] = useState(false)
+  const [more, setMore] = useState(false)
+  const chartRef = useRef<HTMLDivElement>(null)
+  const sheetRef = useRef<HTMLDivElement>(null)
   const [primary, setPrimary] = useState(() => Object.keys(initial || {}).some((k) => isPrimary(k)) && !Object.keys(initial || {}).some((k) => !isPrimary(k)))
   const [selected, setSelected] = useState<string | null>(null)
   const [input, setInput] = useState('')
@@ -228,6 +279,7 @@ export default function DentalChart({
       flushQueue(queue.current, (changes) => onSaveRef.current(changes), (state, error) => {
         setSaveState(state)
         setSaveError(error)
+        if (state === 'saved') setDirty({})
       }),
     []
   )
@@ -252,6 +304,7 @@ export default function DentalChart({
       queue.current.pending[fdi] = tooth
     }
     setData(next)
+    setDirty((d) => ({ ...d, ...Object.fromEntries(Object.keys(changes).map((fdi) => [fdi, true as const])) }))
     setHistory((h) => [...h.slice(-49), Object.keys(changes).map((fdi) => ({ fdi, before: before[fdi] }))])
     flush()
   }
@@ -322,6 +375,7 @@ export default function DentalChart({
       queue.current.pending[fdi] = before ?? null
     }
     setData(next)
+    setDirty((d) => ({ ...d, ...Object.fromEntries(step.map(({ fdi }) => [fdi, true as const])) }))
     flush()
   }
 
@@ -333,14 +387,28 @@ export default function DentalChart({
     setSelected((s) => (s === fdi ? null : fdi))
     setSurfaces('')
     setToothNote('')
-    inputRef.current?.focus({ preventScroll: true })
+    // Only with a real keyboard: on a phone, focusing the box would pop the
+    // on-screen keyboard up over the chart at every tap.
+    if (hasKeyboard()) inputRef.current?.focus({ preventScroll: true })
+    // On a phone, keep the tapped tooth in view above the panel of findings.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const sheet = sheetRef.current
+        const tooth = chartRef.current?.querySelector(`[data-fdi="${fdi}"]`)
+        if (!sheet || !tooth || getComputedStyle(sheet).position !== 'fixed') return
+        const t = tooth.getBoundingClientRect()
+        const limit = sheet.getBoundingClientRect().top - 12
+        if (t.bottom > limit) window.scrollBy({ top: t.bottom - limit, behavior: 'smooth' })
+        else if (t.top < 8) window.scrollBy({ top: t.top - 8, behavior: 'smooth' })
+      })
+    )
   }, [])
 
   function tapCondition(code: string) {
     if (!selected) return
     apply([selected], [code], { surfaces: surfaces || undefined })
     setSurfaces('')
-    inputRef.current?.focus({ preventScroll: true })
+    if (hasKeyboard()) inputRef.current?.focus({ preventScroll: true })
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -356,6 +424,25 @@ export default function DentalChart({
     }
   }
 
+  function renderFinding(code: string) {
+    if (!selected) return null
+    const c = condition(code)!
+    const has = findingsOf(data[selected]).some((f) => f.code === code)
+    return (
+      <button
+        key={code}
+        type="button"
+        onClick={() => (has ? removeOne(selected, code) : tapCondition(code))}
+        className={`inline-flex min-h-[40px] items-center gap-1 rounded-control border px-3 text-sm transition-colors sm:min-h-[36px] ${
+          has ? `border-transparent font-semibold ${TONE[c.status]}` : 'border-ink/12 text-ink/75 hover:border-teal hover:bg-teal/[0.04]'
+        }`}
+      >
+        {has && <Check size={13} />}
+        {BUTTON_LABEL[code] ?? c.label}
+      </button>
+    )
+  }
+
   // ---- derived --------------------------------------------------------------
   const today = new Date().toDateString()
   const todays = Object.entries(data)
@@ -365,6 +452,7 @@ export default function DentalChart({
   const upperCodes = primary ? PRIMARY_UPPER : PERMANENT_UPPER
   const lowerCodes = primary ? PRIMARY_LOWER : PERMANENT_LOWER
   const selectedFindings = selected ? findingsOf(data[selected]) : []
+  const toothScale = large ? 1.18 : 1
 
   return (
     <div className={compact ? '' : 'bg-white rounded-card shadow-soft p-5 sm:p-6'}>
@@ -372,6 +460,15 @@ export default function DentalChart({
         {!compact && <h2 className="font-display text-lg text-ink-strong">Dental chart</h2>}
         <SaveBadge state={saveState} error={saveError} />
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTyping((v) => !v)}
+            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors sm:hidden ${
+              typing ? 'border-teal bg-teal/10 text-teal-deep' : 'border-ink/15 text-ink/55'
+            }`}
+          >
+            <Keyboard size={12} /> Type
+          </button>
           <button
             type="button"
             onClick={() => setHelp((v) => !v)}
@@ -397,7 +494,9 @@ export default function DentalChart({
       </div>
 
       {/* Quick entry: the fast way, typed as the doctor dictates. */}
-      <div className="rounded-control border-2 border-teal/30 bg-teal/[0.03] p-2 focus-within:border-teal">
+      {/* On a phone it is tucked away (tap "Type" to show it): tapping teeth is
+          the quicker way there. */}
+      <div className={`rounded-control border-2 border-teal/30 bg-teal/[0.03] p-2 focus-within:border-teal ${typing ? '' : 'hidden sm:block'}`}>
         <div className="flex items-center gap-2">
           <input
             ref={inputRef}
@@ -426,17 +525,19 @@ export default function DentalChart({
 
       {help && <CodeSheet />}
 
-      <div className="mt-4 overflow-x-auto pb-1">
-        <div className="flex min-w-max flex-col items-center gap-2 px-1">
-          <Arch codes={upperCodes} upper data={data} selected={selected} onTap={tapTooth} />
+      <div ref={chartRef} className="mt-4 overflow-x-auto pb-1">
+        <div className="flex flex-col items-center gap-2 px-1">
+          <Arch codes={upperCodes} upper data={data} selected={selected} scale={toothScale} onTap={tapTooth} />
           <div className="w-full max-w-lg border-t border-dashed border-ink/15" />
-          <Arch codes={lowerCodes} upper={false} data={data} selected={selected} onTap={tapTooth} />
+          <Arch codes={lowerCodes} upper={false} data={data} selected={selected} scale={toothScale} onTap={tapTooth} />
         </div>
       </div>
 
       {/* Tap-to-chart: shown for the selected tooth. */}
+      {/* On a phone the finding buttons sit in a panel along the bottom of the
+          screen, so the chart stays in view and the next tooth is one tap away. */}
       {selected && (
-        <div className="mt-4 space-y-3 rounded-control border border-teal/30 bg-white p-3">
+        <div ref={sheetRef} className="fixed inset-x-0 bottom-0 z-40 max-h-[52vh] space-y-2.5 overflow-y-auto rounded-t-2xl border-t border-teal/30 bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(0,0,0,0.14)] sm:static sm:z-auto sm:mt-4 sm:max-h-none sm:space-y-3 sm:overflow-visible sm:rounded-control sm:border sm:p-3 sm:shadow-none">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <p className="text-sm font-semibold text-ink-strong">
               {palmer(selected)} <span className="font-mono font-normal text-ink/45">· {selected}</span>
@@ -455,13 +556,20 @@ export default function DentalChart({
                 </span>
               ))}
             </div>
-            <button type="button" onClick={() => setSelected(null)} className="ml-auto p-1 text-ink/40 hover:text-ink-strong" aria-label="Close">
-              <X size={16} />
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="ml-auto rounded-control px-3 py-1.5 text-sm font-medium text-teal-deep hover:bg-teal/10 sm:p-1 sm:text-ink/40"
+              title="Close"
+            >
+              <span className="sm:hidden">Done</span>
+              <X size={16} className="hidden sm:block" aria-hidden />
+              <span className="sr-only">Close</span>
             </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-[10px] font-mono uppercase tracking-wider text-ink/40">Surfaces</span>
+            <span className="mr-1 text-[10px] font-mono uppercase tracking-wider text-ink/40">Surf.</span>
             {SURFACE_KEYS.map((s) => {
               const on = surfaces.includes(s)
               return (
@@ -469,7 +577,7 @@ export default function DentalChart({
                   key={s}
                   type="button"
                   onClick={() => setSurfaces((v) => (on ? v.replace(s, '') : v + s))}
-                  className={`h-8 w-8 rounded-control border text-xs font-semibold transition-colors ${
+                  className={`h-9 w-9 rounded-control border text-xs font-semibold transition-colors sm:h-8 sm:w-8 ${
                     on ? 'border-teal bg-teal text-white' : 'border-ink/15 text-ink/60 hover:border-teal'
                   }`}
                 >
@@ -477,32 +585,29 @@ export default function DentalChart({
                 </button>
               )
             })}
-            <span className="text-[11px] text-ink/40">optional, then tap the finding</span>
+            <span className="hidden text-[11px] text-ink/40 sm:inline">optional, then tap the finding</span>
           </div>
 
+          {/* Phone: the common findings first, everything else under More. */}
+          {!more && (
+            <div className="flex flex-wrap gap-1.5 sm:hidden">
+              {COMMON.map((code) => renderFinding(code))}
+              <button
+                type="button"
+                onClick={() => setMore(true)}
+                className="inline-flex min-h-[40px] items-center rounded-control px-3 text-sm text-teal-deep"
+              >
+                More…
+              </button>
+            </div>
+          )}
+          <div className={`space-y-2.5 sm:space-y-3 ${more ? '' : 'hidden sm:block'}`}>
           {PALETTE.map((group) => (
             <div key={group.title} className="flex flex-wrap items-center gap-1.5">
-              <span className="w-full text-[10px] font-mono uppercase tracking-wider text-ink/40 sm:w-28">{group.title}</span>
-              {group.codes.map((code) => {
-                const c = condition(code)!
-                const has = selectedFindings.some((f) => f.code === code)
-                return (
-                  <button
-                    key={code}
-                    type="button"
-                    onClick={() => (has ? removeOne(selected, code) : tapCondition(code))}
-                    className={`inline-flex min-h-[36px] items-center gap-1 rounded-control border px-3 text-sm transition-colors ${
-                      has ? `border-transparent font-semibold ${TONE[c.status]}` : 'border-ink/12 text-ink/75 hover:border-teal hover:bg-teal/[0.04]'
-                    }`}
-                  >
-                    {has && <Check size={13} />}
-                    {code.startsWith('c') && code.length === 2 ? c.short : c.label}
-                  </button>
-                )
-              })}
+              <span className="hidden text-[10px] font-mono uppercase tracking-wider text-ink/40 sm:inline-block sm:w-28">{group.title}</span>
+              {group.codes.map((code) => renderFinding(code))}
             </div>
           ))}
-
           <div className="flex flex-wrap gap-2">
             <input
               value={toothNote}
@@ -523,6 +628,7 @@ export default function DentalChart({
             >
               Clear tooth
             </button>
+          </div>
           </div>
           {data[selected]?.note && <p className="text-xs text-ink/55">Note: {data[selected]!.note}</p>}
         </div>
@@ -571,6 +677,7 @@ export default function DentalChart({
           )
         })}
       </div>
+      {selected && <div className="h-[52vh] sm:hidden" aria-hidden />}
     </div>
   )
 }

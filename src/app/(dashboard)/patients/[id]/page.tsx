@@ -185,8 +185,9 @@ export default async function PatientProfilePage({
         <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
           <ActivePatientSync patientId={id} variant="dark" />
           <LiveRefresh
-            tables={['visits', 'image_records', 'appointments']}
+            tables={['visits', 'image_records', 'appointments', 'patients']}
             filters={{
+              patients: `id=eq.${id}`,
               visits: `patient_id=eq.${id}`,
               image_records: `patient_id=eq.${id}`,
               appointments: `patient_id=eq.${id}`,

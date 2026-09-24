@@ -8,9 +8,11 @@ import { saveTeeth } from './odontogramActions'
 export default function Odontogram({
   patientId,
   initialOdontogram,
+  large = false,
 }: {
   patientId: string
   initialOdontogram: OdontogramData
+  large?: boolean
 }) {
-  return <DentalChart initial={initialOdontogram || {}} onSave={(changes) => saveTeeth(patientId, changes)} />
+  return <DentalChart initial={initialOdontogram || {}} large={large} onSave={(changes) => saveTeeth(patientId, changes)} />
 }

@@ -15,6 +15,7 @@ import {
   DoorOpen,
   Sheet,
   Settings as SettingsIcon,
+  Smile,
 } from 'lucide-react'
 
 interface NavConfig {
@@ -36,7 +37,7 @@ interface SidebarNavProps {
 
 // Dentists work from the patient's page — imaging, treatment, labs and the next
 // booking all live there — so their menu is just the way in plus stock.
-const DENTIST_NAV = new Set(['/patients', '/inventory'])
+const DENTIST_NAV = new Set(['/patients', '/chart', '/inventory'])
 
 export default function SidebarNav({ config, role }: SidebarNavProps) {
   const pathname = usePathname()
@@ -58,6 +59,8 @@ export default function SidebarNav({ config, role }: SidebarNavProps) {
       visible: config?.features_enabled?.recall !== false
     },
     { href: '/patients', label: 'Patients', icon: Users, visible: true },
+    // Charting from a phone at the chair: today's patients, one tap to the chart.
+    { href: '/chart', label: 'Quick chart', icon: Smile, visible: true },
     {
       href: '/lab-cases',
       label: 'Lab Cases',
