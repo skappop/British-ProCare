@@ -116,6 +116,20 @@ function flushQueue(
     })
 }
 
+/** Same tooth content, whatever order the keys come back in from the database. */
+function sameTooth(a: ToothData | undefined, b: ToothData | undefined) {
+  return stable(a) === stable(b)
+}
+function stable(v: unknown): string {
+  if (v === undefined || v === null) return 'null'
+  if (Array.isArray(v)) return `[${v.map(stable).join(',')}]`
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    return `{${Object.keys(o).filter((k) => o[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${stable(o[k])}`).join(',')}}`
+  }
+  return JSON.stringify(v)
+}
+
 // ---------------------------------------------------------------------------
 // One tooth. Memoised so a change to one tooth redraws only that tooth — the
 // old chart rebuilt all 32 on every tap, which is what made it feel sluggish.
@@ -126,6 +140,7 @@ const Tooth = memo(function Tooth({
   tooth,
   upper,
   selected,
+  fresh,
   scale,
   midline,
   onTap,
@@ -134,6 +149,8 @@ const Tooth = memo(function Tooth({
   tooth: ToothData | undefined
   upper: boolean
   selected: boolean
+  /** Just charted on another device. */
+  fresh: boolean
   scale: number
   /** First tooth after the midline (21, 31, …). */
   midline: boolean
@@ -169,7 +186,7 @@ const Tooth = memo(function Tooth({
       title={`${palmer(fdi)} · ${fdi}${findings.length ? ' — ' + findings.map(findingLabel).join(', ') : ''}`}
       className={`relative flex min-w-0 shrink-0 flex-col items-center gap-1 rounded-lg px-0.5 py-1 transition-colors max-sm:w-full max-sm:px-0 ${
         midline ? 'sm:ml-[14px]' : ''
-      } ${selected ? 'z-10 bg-teal/[0.14] ring-2 ring-teal' : 'hover:bg-marble active:bg-cream'}`}
+      } ${selected ? 'z-10 bg-teal/[0.14] ring-2 ring-teal' : fresh ? 'z-10 bg-gold/15 ring-2 ring-gold' : 'hover:bg-marble active:bg-cream'}`}
     >
       {upper ? codes : number}
       <ToothGlyph
@@ -190,6 +207,7 @@ function Arch({
   upper,
   data,
   selected,
+  fresh,
   scale,
   onTap,
 }: {
@@ -197,6 +215,7 @@ function Arch({
   upper: boolean
   data: OdontogramData
   selected: string | null
+  fresh: Record<string, true>
   scale: number
   onTap: (fdi: string) => void
 }) {
@@ -217,6 +236,7 @@ function Arch({
           tooth={data[fdi]}
           upper={upper}
           selected={selected === fdi}
+          fresh={!!fresh[fdi]}
           scale={scale}
           midline={i === half}
           onTap={onTap}
@@ -258,6 +278,10 @@ export default function DentalChart({
   // charting arrives, so a live update never undoes what was just tapped.
   const [dirty, setDirty] = useState<Record<string, true>>({})
   const [seenInitial, setSeenInitial] = useState(initial)
+  // Teeth just charted on another device (the assistant's phone), shown
+  // highlighted until looked at, with a line saying what arrived.
+  const [fresh, setFresh] = useState<Record<string, true>>({})
+  const [freshVersion, setFreshVersion] = useState(0)
   if (initial !== seenInitial) {
     setSeenInitial(initial)
     const merged: OdontogramData = { ...(initial || {}) }
@@ -265,7 +289,14 @@ export default function DentalChart({
       if (data[fdi]) merged[fdi] = data[fdi]
       else delete merged[fdi]
     }
+    const arrived = [...new Set([...Object.keys(merged), ...Object.keys(data)])].filter(
+      (fdi) => !dirty[fdi] && !sameTooth(merged[fdi], data[fdi])
+    )
     setData(merged)
+    if (arrived.length) {
+      setFresh((f) => ({ ...f, ...Object.fromEntries(arrived.map((fdi) => [fdi, true as const])) }))
+      setFreshVersion((v) => v + 1)
+    }
   }
   const [typing, setTyping] = useState(false)
   const [more, setMore] = useState(false)
@@ -282,6 +313,53 @@ export default function DentalChart({
   // Each step is one action (one Enter or one tap), so Undo reverses it whole.
   const [history, setHistory] = useState<{ fdi: string; before: ToothData | undefined }[][]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // ---- charting from another device ---------------------------------------
+  const rootRef = useRef<HTMLDivElement>(null)
+  const scrollWhenBack = useRef(false)
+  const backAt = useRef(0)
+  useEffect(() => {
+    const away = () => document.visibilityState !== 'visible' || !document.hasFocus()
+    const onBack = () => {
+      if (away()) return
+      backAt.current = Date.now()
+      if (scrollWhenBack.current) {
+        scrollWhenBack.current = false
+        backAt.current = 0
+        rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+    // Once they scroll or type themselves, the page is theirs: no more jumps.
+    const takeOver = () => {
+      backAt.current = 0
+    }
+    document.addEventListener('visibilitychange', onBack)
+    window.addEventListener('focus', onBack)
+    window.addEventListener('wheel', takeOver, { passive: true })
+    window.addEventListener('touchmove', takeOver, { passive: true })
+    window.addEventListener('keydown', takeOver)
+    return () => {
+      document.removeEventListener('visibilitychange', onBack)
+      window.removeEventListener('focus', onBack)
+      window.removeEventListener('wheel', takeOver)
+      window.removeEventListener('touchmove', takeOver)
+      window.removeEventListener('keydown', takeOver)
+    }
+  }, [])
+  useEffect(() => {
+    if (!freshVersion) return
+    // Charted while the doctor was in the camera software (or it arrives just
+    // as they come back): the chart is what they need to see, so bring it up.
+    // While they are working on this page, only highlight: never yank the page.
+    const away = document.visibilityState !== 'visible' || !document.hasFocus()
+    if (away) scrollWhenBack.current = true
+    else if (Date.now() - backAt.current < 8000) {
+      backAt.current = 0 // once per return
+      rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    const t = setTimeout(() => setFresh({}), 120_000)
+    return () => clearTimeout(t)
+  }, [freshVersion])
 
   // ---- saving: queue changes, one request in flight, retry on failure -----
   const queue = useRef<SaveQueue>({ pending: {}, inFlight: false, retry: null })
@@ -399,6 +477,12 @@ export default function DentalChart({
   }
 
   const tapTooth = useCallback((fdi: string) => {
+    setFresh((f) => {
+      if (!f[fdi]) return f
+      const next = { ...f }
+      delete next[fdi]
+      return next
+    })
     setSelected((s) => (s === fdi ? null : fdi))
     setSurfaces('')
     setToothNote('')
@@ -469,8 +553,10 @@ export default function DentalChart({
   const selectedFindings = selected ? findingsOf(data[selected]) : []
   const toothScale = large ? 1.18 : 1
 
+  const freshTeeth = Object.keys(fresh).sort()
+
   return (
-    <div className={compact ? '' : 'bg-white rounded-card shadow-soft px-2.5 py-4 sm:p-6'}>
+    <div ref={rootRef} className={`scroll-mt-20 ${compact ? '' : 'bg-white rounded-card shadow-soft px-2.5 py-4 sm:p-6'}`}>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         {!compact && <h2 className="font-display text-lg text-ink-strong">Dental chart</h2>}
         <SaveBadge state={saveState} error={saveError} />
@@ -540,12 +626,29 @@ export default function DentalChart({
 
       {help && <CodeSheet />}
 
+      {freshTeeth.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-control bg-gold/10 px-3 py-2 text-sm text-ink-strong">
+          <span className="font-medium text-gold-deep">Just charted on another device:</span>
+          <span className="min-w-0 flex-1">
+            {freshTeeth
+              .map((fdi) => {
+                const found = findingsOf(data[fdi])
+                return `${palmer(fdi)} ${found.length ? found.map(findingShort).join(' ') : 'cleared'}`
+              })
+              .join('  ·  ')}
+          </span>
+          <button type="button" onClick={() => setFresh({})} className="text-xs text-ink/55 underline hover:text-ink-strong">
+            Got it
+          </button>
+        </div>
+      )}
+
       <div ref={chartRef} className="mt-4 overflow-x-auto pb-1">
         <div className="flex flex-col items-center gap-2 px-1 max-sm:px-0">
           <SideLabels top />
-          <Arch codes={upperCodes} upper data={data} selected={selected} scale={toothScale} onTap={tapTooth} />
+          <Arch codes={upperCodes} upper data={data} selected={selected} fresh={fresh} scale={toothScale} onTap={tapTooth} />
           <div className="w-full max-w-lg border-t border-dashed border-ink/20 max-sm:max-w-none" />
-          <Arch codes={lowerCodes} upper={false} data={data} selected={selected} scale={toothScale} onTap={tapTooth} />
+          <Arch codes={lowerCodes} upper={false} data={data} selected={selected} fresh={fresh} scale={toothScale} onTap={tapTooth} />
           <SideLabels top={false} />
         </div>
       </div>

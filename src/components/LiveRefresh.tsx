@@ -52,8 +52,13 @@ export default function LiveRefresh({
       })
     }
 
+    // Back after the link dropped (sleep, Wi-Fi): catch up on what was missed.
+    let lost = false
     channel.subscribe((status) => {
-      setConnected(status === 'SUBSCRIBED')
+      const ok = status === 'SUBSCRIBED'
+      setConnected(ok)
+      if (ok && lost) router.refresh()
+      if (!ok) lost = true
     })
 
     return () => {
@@ -61,6 +66,26 @@ export default function LiveRefresh({
       supabase.removeChannel(channel)
     }
   }, [key, router])
+
+  // Back in front after another program had the screen (the camera software,
+  // another tab): the browser may have held back updates meanwhile, so catch
+  // up at once rather than show a stale page.
+  useEffect(() => {
+    let last = 0
+    const catchUp = () => {
+      if (document.visibilityState !== 'visible') return
+      const now = Date.now()
+      if (now - last < 3000) return
+      last = now
+      router.refresh()
+    }
+    document.addEventListener('visibilitychange', catchUp)
+    window.addEventListener('focus', catchUp)
+    return () => {
+      document.removeEventListener('visibilitychange', catchUp)
+      window.removeEventListener('focus', catchUp)
+    }
+  }, [router])
 
   const dark = variant === 'dark'
 
