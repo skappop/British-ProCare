@@ -21,6 +21,8 @@ export type TodayAppointment = {
   id: string
   scheduled_at: string
   status: string
+  /** Seen patients only: what they still owe (0 when paid up). */
+  balance_due?: number | null
   patient: ReceptionPatient | null
 }
 
@@ -48,6 +50,8 @@ export type SavedVisit = {
 export type PaymentSummary = {
   amount: number
   method: string
+  /** For printing its receipt. */
+  paymentId?: string
 }
 
 // Safety flags surfaced as a persistent banner from the History step onward.
@@ -70,11 +74,3 @@ export const STEPS = [
 ] as const
 
 export type StepKey = (typeof STEPS)[number]['key']
-
-export const PAYMENT_METHODS: { value: string; label: string }[] = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'card', label: 'Card' },
-  { value: 'bank_transfer', label: 'Bank Transfer' },
-  { value: 'installment', label: 'Installment' },
-  { value: 'other', label: 'Other' },
-]

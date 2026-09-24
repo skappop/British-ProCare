@@ -1,8 +1,11 @@
+import { isOwner } from '@/lib/auth/role'
 import { createClient } from '@/lib/supabase/server'
 import { restockItem, duplicateItem } from './actions'
 import Link from 'next/link'
 
 export default async function InventoryPage() {
+  // Supplier prices are the owner's business.
+  const showPurchaseOrders = await isOwner()
   const supabase = await createClient()
 
   const { data: items } = await supabase
@@ -30,9 +33,11 @@ export default async function InventoryPage() {
           <Link href="/inventory/labels" className="text-xs text-teal-deep hover:underline">
             QR Labels
           </Link>
-          <Link href="/inventory/purchase-orders" className="text-xs text-teal-deep hover:underline">
-            Purchase Orders
-          </Link>
+          {showPurchaseOrders && (
+            <Link href="/inventory/purchase-orders" className="text-xs text-teal-deep hover:underline">
+              Purchase Orders
+            </Link>
+          )}
           <Link
             href="/inventory/quick-add"
             className="border border-teal/40 text-teal-deep hover:bg-teal/10 text-sm px-3 py-2 rounded-control transition-colors"

@@ -25,9 +25,12 @@ type LabCase = {
 export default function PatientLabCases({
   patientId,
   initialCases,
+  showLabFee = false,
 }: {
   patientId: string
   initialCases: LabCase[]
+  /** The lab's charge is a clinic cost: owner only, never on a chairside screen by default. */
+  showLabFee?: boolean
 }) {
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
@@ -97,19 +100,21 @@ export default function PatientLabCases({
               className="rounded-control border border-ink/15 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-teal"
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className={`grid gap-2 ${showLabFee ? 'grid-cols-2' : 'grid-cols-1'}`}>
             <input
               name="due_at"
               type="date"
               className="rounded-control border border-ink/15 px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-teal"
             />
-            <input
-              name="lab_fee"
-              type="number"
-              step="0.01"
-              placeholder="Lab fee EGP"
-              className="rounded-control border border-ink/15 px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-teal"
-            />
+            {showLabFee && (
+              <input
+                name="lab_fee"
+                type="number"
+                step="0.01"
+                placeholder="Lab fee EGP"
+                className="rounded-control border border-ink/15 px-3 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-teal"
+              />
+            )}
           </div>
           <button
             type="submit"

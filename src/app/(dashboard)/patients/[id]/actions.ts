@@ -193,75 +193,6 @@ export async function getLastVisitSetup(patientId: string) {
   }
 }
 
-// ---------- Payments & Ledger ----------
-
-export async function recordPayment(formData: FormData) {
-  const supabase = await createClient()
-
-  const patientId = formData.get('patient_id') as string
-  const visitId = (formData.get('visit_id') as string) || null
-  const amountRaw = formData.get('amount') as string
-  const method = (formData.get('method') as string) || 'cash'
-  const paidAt = (formData.get('paid_at') as string) || ''
-  const note = (formData.get('notes') as string) || null
-
-  const amount = parseFloat(amountRaw)
-  if (!amount || amount <= 0) {
-    return { ok: false, message: 'Enter a valid payment amount' }
-  }
-
-  const { error } = await supabase.from('payments').insert({
-    patient_id: patientId,
-    visit_id: visitId,
-    amount,
-    method,
-    paid_at: paidAt ? new Date(paidAt).toISOString() : new Date().toISOString(),
-    note,
-  })
-
-  if (error) {
-    return { ok: false, message: error.message }
-  }
-
-  revalidatePath(`/patients/${patientId}`)
-  revalidatePath(`/patients/${patientId}/billing`)
-  revalidatePath('/')
-  revalidatePath('/reports')
-
-  return { ok: true, message: 'Payment recorded' }
-}
-
-export async function deletePayment(id: string, patientId: string) {
-  const supabase = await createClient()
-  await supabase.from('payments').delete().eq('id', id)
-  revalidatePath(`/patients/${patientId}`)
-  revalidatePath(`/patients/${patientId}/billing`)
-  revalidatePath('/')
-  revalidatePath('/reports')
-}
-
-export async function getPatientLedger(patientId: string) {
-  const supabase = await createClient()
-
-  const [{ data: visits }, { data: payments }] = await Promise.all([
-    supabase.from('visits').select('id, fee_charged').eq('patient_id', patientId),
-    supabase
-      .from('payments')
-      .select('id, amount, method, paid_at, note, visit_id')
-      .eq('patient_id', patientId)
-      .order('paid_at', { ascending: false }),
-  ])
-
-  const totalCharged = (visits || []).reduce((s, v: any) => s + (Number(v.fee_charged) || 0), 0)
-  const totalPaid = (payments || []).reduce((s, p: any) => s + (Number(p.amount) || 0), 0)
-
-  return {
-    totalCharged,
-    totalPaid,
-    balance: totalCharged - totalPaid,
-    payments: payments || [],
-  }
-}
 /**
  * Reception adjusting what a visit costs (a discount, a correction). The doctor
  * never sees fees, so this is where the auto-calculated fee gets its final say.
@@ -289,5 +220,7 @@ export async function updateVisitFee(
   if (error) return { ok: false, message: error.message }
 
   revalidatePath(`/patients/${patientId}/billing`)
+  revalidatePath('/appointments')
+  revalidatePath('/patients')
   return { ok: true }
 }

@@ -3,12 +3,8 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { updateStaffRole } from './actions'
+import { ROLE_LABEL as ROLE_LABELS } from '@/lib/auth/access'
 
-const ROLE_LABELS: Record<string, string> = {
-  owner: 'Owner',
-  dentist: 'Dentist',
-  assistant: 'Assistant',
-}
 
 export default function RoleSelect({
   profileId,

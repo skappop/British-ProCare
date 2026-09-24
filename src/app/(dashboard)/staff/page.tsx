@@ -1,12 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { isOwner } from '@/lib/auth/role'
 import RoleSelect from './RoleSelect'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { ROLE_LABEL, ROLE_SUMMARY, asRole, type StaffRole } from '@/lib/auth/access'
 
-const ROLE_LABELS: Record<string, string> = {
-  owner: 'Owner',
-  dentist: 'Dentist',
-  assistant: 'Assistant',
-}
 
 export default async function StaffPage() {
   const canManage = await isOwner()
@@ -14,6 +11,15 @@ export default async function StaffPage() {
 
   const { data: profiles } = await supabase.from('profiles').select('*').order('created_at')
   const { data: { user: currentUser } } = await supabase.auth.getUser()
+
+  // Emails live with the logins, not the profiles; the owner sees them so each
+  // row is recognisable. Needs the service key, which the server already has.
+  const emails = new Map<string, string>()
+  const admin = canManage ? createAdminClient() : null
+  if (admin) {
+    const { data } = await admin.auth.admin.listUsers({ perPage: 200 })
+    for (const u of data?.users ?? []) if (u.email) emails.set(u.id, u.email)
+  }
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -33,8 +39,16 @@ export default async function StaffPage() {
           Supabase dashboard
         </a>{' '}
         → Authentication → Users → Add User. A profile row is created automatically with the
-        default "Assistant" role — assign the correct role for them below afterward.
+        &ldquo;Reception&rdquo; role — change it below if they are a dentist or an owner.
         Only the Owner can change roles, and only the Owner can view revenue and financial data.
+      </div>
+
+      <div className="bg-white rounded-card shadow-soft px-4 py-3 space-y-1.5">
+        {(Object.keys(ROLE_SUMMARY) as StaffRole[]).map((r) => (
+          <p key={r} className="text-sm text-ink/70">
+            <span className="font-medium text-ink-strong">{ROLE_LABEL[r]}:</span> {ROLE_SUMMARY[r]}
+          </p>
+        ))}
       </div>
 
       <div className="bg-white rounded-card shadow-soft divide-y divide-ink/5">
@@ -47,13 +61,13 @@ export default async function StaffPage() {
                   <span className="text-xs text-teal-deep ml-2">(you)</span>
                 )}
               </p>
-              <p className="text-xs text-ink/40 font-mono mt-0.5">{p.id}</p>
+              <p className="text-xs text-ink/50 mt-0.5">{emails.get(p.id) ?? <span className="font-mono text-ink/35">{p.id}</span>}</p>
             </div>
             {canManage ? (
               <RoleSelect profileId={p.id} currentRole={p.role} />
             ) : (
               <span className="text-xs px-3 py-1.5 rounded-full bg-marble text-ink/60 border border-ink/10">
-                {ROLE_LABELS[p.role] || p.role}
+                {ROLE_LABEL[asRole(p.role)]}
               </span>
             )}
           </div>

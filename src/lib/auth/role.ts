@@ -1,6 +1,8 @@
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { HOME, asRole, canOpen, type StaffRole } from './access'
 
-export type StaffRole = 'owner' | 'dentist' | 'assistant'
+export type { StaffRole } from './access'
 
 export async function getCurrentUserRole(): Promise<StaffRole | null> {
   const supabase = await createClient()
@@ -32,4 +34,14 @@ export async function isOwner(): Promise<boolean> {
 export async function canHandleMoney(): Promise<boolean> {
   const role = await getCurrentUserRole()
   return role === 'owner' || role === 'assistant'
+}
+
+/**
+ * First line of a page someone might not be allowed on: sends them to their
+ * own starting page instead. `path` is the section, e.g. '/reports'.
+ */
+export async function guardPage(path: string): Promise<StaffRole> {
+  const role = asRole(await getCurrentUserRole())
+  if (!canOpen(role, path)) redirect(HOME[role])
+  return role
 }

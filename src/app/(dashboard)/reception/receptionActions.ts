@@ -4,7 +4,7 @@
 //
 // These mirror the shapes of the existing patient/intake actions but RETURN
 // their result instead of calling redirect(), so the client-side stepper can
-// react and advance. The heavy lifting (logVisit, recordPayment,
+// react and advance. The heavy lifting (logVisit, takePayment,
 // createAppointment, getBomPreview, …) is reused from the existing modules —
 // nothing here duplicates that logic.
 

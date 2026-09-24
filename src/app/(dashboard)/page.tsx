@@ -1,13 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { isOwner, getCurrentUserRole } from '@/lib/auth/role'
-import { redirect } from 'next/navigation'
+import { isOwner, guardPage } from '@/lib/auth/role'
 import { DoorOpen } from 'lucide-react'
 
 export default async function DashboardPage() {
-  // The dashboard is the front desk's overview; a dentist's day starts with
-  // the patients, so that is where they land.
-  if ((await getCurrentUserRole()) === 'dentist') redirect('/patients')
+  // Takings and totals: the owner's view. Everyone else starts on their own page.
+  await guardPage('/')
 
   const supabase = await createClient()
   const canSeeFinancials = await isOwner()

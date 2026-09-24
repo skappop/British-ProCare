@@ -102,9 +102,9 @@ export default function StepDone({
 
         {/* Quick actions */}
         <div className="grid sm:grid-cols-2 gap-2.5">
-          {visit.id && (
+          {payment?.paymentId && (
             <a
-              href={`/receipts/${visit.id}`}
+              href={`/receipts/payment/${payment.paymentId}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-3 rounded-control border border-ink/10 px-4 py-3 hover:border-teal hover:bg-teal/[0.04] transition-colors"

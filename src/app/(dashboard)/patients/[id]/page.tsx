@@ -12,7 +12,7 @@ import { getVisitState } from './visitState'
 import { getClinics } from '@/lib/clinics'
 import TreatmentPlanPanel from './TreatmentPlanPanel'
 import PatientLabCases from './PatientLabCases'
-import { canHandleMoney } from '@/lib/auth/role'
+import { canHandleMoney, isOwner } from '@/lib/auth/role'
 
 function formatQuickLog(log: any): string[] {
   if (!log) return []
@@ -244,7 +244,7 @@ export default async function PatientProfilePage({
           />
         )}
 
-        <PatientLabCases patientId={id} initialCases={labCases || []} />
+        <PatientLabCases patientId={id} initialCases={labCases || []} showLabFee={await isOwner()} />
 
         <details className="bg-white rounded-card shadow-soft group">
           <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">

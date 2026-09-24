@@ -17,6 +17,7 @@ import {
   Settings as SettingsIcon,
   Smile,
 } from 'lucide-react'
+import { canOpen } from '@/lib/auth/access'
 
 interface NavConfig {
   features_enabled?: {
@@ -35,9 +36,6 @@ interface SidebarNavProps {
   role?: 'owner' | 'dentist' | 'assistant' | null
 }
 
-// Dentists work from the patient's page — imaging, treatment, labs and the next
-// booking all live there — so their menu is just the way in plus stock.
-const DENTIST_NAV = new Set(['/patients', '/chart', '/inventory'])
 
 export default function SidebarNav({ config, role }: SidebarNavProps) {
   const pathname = usePathname()
@@ -97,7 +95,8 @@ export default function SidebarNav({ config, role }: SidebarNavProps) {
 
   // Filter to only visible items
   const visibleNav = NAV.filter(
-    (item) => item.visible && (role !== 'dentist' || DENTIST_NAV.has(item.href))
+    // Only what this role can open — the pages enforce the same rules.
+    (item) => item.visible && canOpen(role, item.href)
   )
 
   return (

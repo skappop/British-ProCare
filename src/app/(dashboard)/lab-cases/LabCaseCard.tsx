@@ -17,7 +17,7 @@ type LabCase = {
   status: string
 }
 
-export default function LabCaseCard({ labCase }: { labCase: LabCase }) {
+export default function LabCaseCard({ labCase, showLabFee = false }: { labCase: LabCase; showLabFee?: boolean }) {
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
 
@@ -48,7 +48,7 @@ export default function LabCaseCard({ labCase }: { labCase: LabCase }) {
       <div className="flex items-center justify-between text-xs text-ink/40 font-mono mb-3">
         <span>Sent {new Date(labCase.sent_at).toLocaleDateString('en-GB')}</span>
         {labCase.due_at && <span>Due {new Date(labCase.due_at).toLocaleDateString('en-GB')}</span>}
-        {labCase.lab_fee && <span>EGP {labCase.lab_fee}</span>}
+        {showLabFee && labCase.lab_fee && <span>EGP {labCase.lab_fee}</span>}
       </div>
       <div className="flex gap-2">
         {labCase.status === 'sent' && (

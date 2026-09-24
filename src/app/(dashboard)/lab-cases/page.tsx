@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import LabCaseCard from './LabCaseCard'
+import { isOwner } from '@/lib/auth/role'
 
 const CASE_TYPE_LABELS: Record<string, string> = {
   crown: 'Crown',
@@ -12,6 +13,7 @@ const CASE_TYPE_LABELS: Record<string, string> = {
 }
 
 export default async function LabCasesPage() {
+  const showLabFee = await isOwner()
   const supabase = await createClient()
 
   const { data: cases } = await supabase
@@ -39,6 +41,7 @@ export default async function LabCasesPage() {
           {active.map((c: any) => (
             <LabCaseCard
               key={c.id}
+              showLabFee={showLabFee}
               labCase={{
                 id: c.id,
                 patient_id: c.patient_id,

@@ -3,7 +3,10 @@ import Link from 'next/link'
 import NewPOForm from './NewPOForm'
 import POCard from './POCard'
 
+import { guardPage } from '@/lib/auth/role'
+
 export default async function PurchaseOrdersPage() {
+  await guardPage('/inventory/purchase-orders')
   const supabase = await createClient()
 
   const [{ data: suppliers }, { data: items }, { data: purchaseOrders }] = await Promise.all([

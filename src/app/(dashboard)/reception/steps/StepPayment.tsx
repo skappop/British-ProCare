@@ -3,8 +3,8 @@
 import { useState, useTransition } from 'react'
 import { Wallet } from 'lucide-react'
 import type { PaymentSummary, ReceptionPatient, SavedVisit } from '../types'
-import { PAYMENT_METHODS } from '../types'
-import { recordPayment } from '../../patients/[id]/actions'
+import { PAYMENT_METHODS } from '../../patients/[id]/billing/methods'
+import { takePayment } from '../../patients/[id]/billing/billingActions'
 import { StepCard, PrimaryButton, GhostButton, SectionLabel, inputMonoClass } from '../ui'
 
 export default function StepPayment({
@@ -35,18 +35,10 @@ export default function StepPayment({
       return
     }
 
-    const fd = new FormData()
-    fd.set('patient_id', patient.id)
-    if (visit.id) fd.set('visit_id', visit.id)
-    fd.set('amount', amount)
-    fd.set('method', method)
-    fd.set('paid_at', new Date().toISOString().slice(0, 10))
-    fd.set('notes', paymentNote)
-
     startTransition(async () => {
-      const res = await recordPayment(fd)
+      const res = await takePayment({ patientId: patient.id, amount: value, method, note: paymentNote, visitId: visit.id || null })
       if (res.ok) {
-        onDone({ amount: value, method })
+        onDone({ amount: value, method, paymentId: res.paymentId })
       } else {
         setError(res.message)
       }

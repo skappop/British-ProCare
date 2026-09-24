@@ -52,9 +52,15 @@ export default function StepIdentify({
     return () => clearTimeout(t)
   }, [query, mode])
 
-  const waiting = todayAppointments.filter(
+  const today = todayAppointments.filter(
     (a) => a.patient && a.status !== 'cancelled' && a.status !== 'no_show'
   )
+  // Still needing something today: seen-but-unpaid first, then everyone else.
+  // Seen and paid fold away under "Done today"; the whole list starts fresh
+  // each clinic day.
+  const toPay = today.filter((a) => a.status === 'completed' && (a.balance_due ?? 0) > 0)
+  const done = today.filter((a) => a.status === 'completed' && (a.balance_due ?? 0) <= 0)
+  const waiting = [...toPay, ...today.filter((a) => a.status !== 'completed')]
 
   function handleCreate() {
     setError(null)
@@ -87,7 +93,7 @@ export default function StepIdentify({
 
           {waiting.length > 0 && (
             <div className="space-y-2.5">
-              <SectionLabel>Booked today</SectionLabel>
+              <SectionLabel>Today</SectionLabel>
               <div className="grid sm:grid-cols-2 gap-2.5">
                 {waiting.map((a) =>
                   a.status === 'completed' && a.patient ? (
@@ -103,7 +109,7 @@ export default function StepIdentify({
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm text-ink-strong font-medium truncate">{a.patient.full_name}</span>
                         <span className="flex items-center gap-1 text-xs text-gold-deep font-medium">
-                          <Wallet size={12} /> Seen · take payment
+                          <Wallet size={12} /> Seen · take payment · EGP {Math.round(a.balance_due ?? 0).toLocaleString()}
                         </span>
                       </span>
                     </Link>
@@ -134,6 +140,25 @@ export default function StepIdentify({
                 )}
               </div>
             </div>
+          )}
+
+          {done.length > 0 && (
+            <details className="group rounded-control border border-ink/10">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-3.5 py-2.5 text-sm text-ink/60">
+                <span className="inline-flex items-center gap-2">
+                  <CheckCircle2 size={15} className="text-success" /> Done today · {done.length} seen and paid
+                </span>
+                <span className="text-xs text-teal-deep group-open:hidden">Show</span>
+              </summary>
+              <div className="divide-y divide-ink/5 border-t border-ink/10">
+                {done.map((a) => (
+                  <Link key={a.id} href={`/patients/${a.patient!.id}/billing`} className="flex items-center justify-between px-3.5 py-2 text-sm hover:bg-marble/60">
+                    <span className="text-ink-strong">{a.patient!.full_name}</span>
+                    <span className="text-xs text-ink/45">Paid ✓</span>
+                  </Link>
+                ))}
+              </div>
+            </details>
           )}
 
           <div className="space-y-2">

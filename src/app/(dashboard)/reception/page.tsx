@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import LiveRefresh from '@/components/LiveRefresh'
 import ReceptionFlow from './ReceptionFlow'
 import type { Procedure, ReceptionPatient, TodayAppointment } from './types'
+import { clinicDayRange } from '@/lib/clinicDay'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,10 +14,8 @@ export default async function ReceptionPage({
   const { patient: patientParam, appt: apptParam } = await searchParams
   const supabase = await createClient()
 
-  const todayStart = new Date()
-  todayStart.setHours(0, 0, 0, 0)
-  const todayEnd = new Date(todayStart)
-  todayEnd.setDate(todayEnd.getDate() + 1)
+  // Today's list starts fresh each clinic day (midnight Cairo time).
+  const { start: todayStart, end: todayEnd } = clinicDayRange()
 
   const [{ data: procedures }, { data: appointments }] = await Promise.all([
     supabase
@@ -26,7 +25,7 @@ export default async function ReceptionPage({
       .order('name'),
     supabase
       .from('appointments')
-      .select('id, scheduled_at, status, patients(id, full_name, phone, file_number, is_ortho)')
+      .select('id, scheduled_at, status, patient_id, patients(id, full_name, phone, file_number, is_ortho)')
       .gte('scheduled_at', todayStart.toISOString())
       .lt('scheduled_at', todayEnd.toISOString())
       .order('scheduled_at', { ascending: true }),
@@ -42,10 +41,20 @@ export default async function ReceptionPage({
     if (pp) initialPatient = { ...(pp as any), is_ortho: !!(pp as any).is_ortho }
   }
 
+  // What seen patients still owe, so paid ones can fold away.
+  const rows = (appointments ?? []) as unknown as { status: string; patient_id: string }[]
+  const seenIds = [...new Set(rows.filter((a) => a.status === 'completed').map((a) => a.patient_id))]
+  const owed = new Map<string, number>()
+  if (seenIds.length) {
+    const { data: balances } = await supabase.from('patient_balances').select('patient_id, balance').in('patient_id', seenIds)
+    for (const b of balances ?? []) owed.set(b.patient_id as string, Number(b.balance) || 0)
+  }
+
   const todayAppointments: TodayAppointment[] = ((appointments as any[]) || []).map((a) => ({
     id: a.id,
     scheduled_at: a.scheduled_at,
     status: a.status,
+    balance_due: a.status === 'completed' ? owed.get(a.patient_id) ?? 0 : null,
     patient: a.patients
       ? {
           id: a.patients.id,
