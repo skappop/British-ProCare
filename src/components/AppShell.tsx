@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { LogOut, Menu, X } from 'lucide-react'
 import SidebarNav from '@/components/SidebarNav'
+import { AlertsToggle } from '@/components/ArrivalAlerts'
 
 interface NavConfig {
   features_enabled?: {
@@ -112,7 +113,10 @@ export default function AppShell({
         </div>
 
         <div className="px-6 pb-6">
-          <div className="gold-hairline mb-4" />
+          <div className="gold-hairline mb-3" />
+          <div className="-mx-3 mb-3">
+            <AlertsToggle />
+          </div>
           <div className="flex items-center justify-between">
             <span className="text-xs text-white/40 truncate">{userEmail}</span>
             <form action={signOutAction}>

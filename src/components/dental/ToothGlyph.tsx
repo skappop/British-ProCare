@@ -8,12 +8,15 @@ export default function ToothGlyph({
   upper,
   primary = false,
   scale = 1,
+  className,
 }: {
   type: ToothType
   status: ToothStatus
   upper: boolean
   primary?: boolean
   scale?: number
+  /** Lets a layout size the tooth with CSS (e.g. fill a column on a phone). */
+  className?: string
 }) {
   const p = toothPaths(type, primary)
   const st = TOOTH_STYLE[status]
@@ -53,6 +56,9 @@ export default function ToothGlyph({
       viewBox={`0 0 ${p.width} ${VIEW_H}`}
       width={p.width * scale}
       height={VIEW_H * scale}
+      className={className}
+      // Upper teeth sit on the midline below them, lower teeth hang from it.
+      preserveAspectRatio={upper ? 'xMidYMax meet' : 'xMidYMin meet'}
       style={{ display: 'block', overflow: 'visible' }}
     >
       {upper ? body : <g transform={`translate(0 ${VIEW_H}) scale(1 -1)`}>{body}</g>}

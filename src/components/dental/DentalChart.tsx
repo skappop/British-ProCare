@@ -127,6 +127,7 @@ const Tooth = memo(function Tooth({
   upper,
   selected,
   scale,
+  midline,
   onTap,
 }: {
   fdi: string
@@ -134,25 +135,27 @@ const Tooth = memo(function Tooth({
   upper: boolean
   selected: boolean
   scale: number
+  /** First tooth after the midline (21, 31, …). */
+  midline: boolean
   onTap: (fdi: string) => void
 }) {
   const primary = isPrimary(fdi)
   const status = tooth?.status || 'healthy'
   const findings = findingsOf(tooth)
   const number = (
-    <span className={`text-[10px] font-mono leading-none ${selected ? 'text-teal-deep font-bold' : 'text-ink/40'}`}>
+    <span className={`text-[10px] font-mono leading-none ${selected ? 'text-teal-deep font-bold' : 'text-ink/45'}`}>
       {fdi}
     </span>
   )
   const codes = (
-    <span className="flex min-h-[14px] flex-col items-center gap-px">
+    <span className="flex min-h-[14px] max-w-full flex-col items-center gap-px">
       {findings.slice(0, 2).map((f) => (
         <span
           key={f.code}
-          className={`rounded px-1 text-[9px] font-semibold leading-[13px] ${TONE[condition(f.code)?.status ?? 'watch']}`}
+          className={`max-w-full truncate rounded px-1 text-[9px] font-semibold leading-[13px] max-sm:px-0.5 max-sm:text-[8px] ${TONE[condition(f.code)?.status ?? 'watch']}`}
         >
           {findingShort(f)}
-          {f.surfaces ? <span className="ml-0.5 font-normal">{f.surfaces}</span> : null}
+          {f.surfaces ? <span className="ml-0.5 font-normal max-sm:hidden">{f.surfaces}</span> : null}
         </span>
       ))}
       {findings.length > 2 && <span className="text-[9px] leading-none text-ink/40">+{findings.length - 2}</span>}
@@ -164,12 +167,19 @@ const Tooth = memo(function Tooth({
       onClick={() => onTap(fdi)}
       data-fdi={fdi}
       title={`${palmer(fdi)} · ${fdi}${findings.length ? ' — ' + findings.map(findingLabel).join(', ') : ''}`}
-      className={`relative flex shrink-0 flex-col items-center gap-1 rounded-lg px-0.5 py-1 transition-colors ${
-        selected ? 'bg-teal/[0.12] ring-2 ring-teal' : 'hover:bg-marble active:bg-cream'
-      }`}
+      className={`relative flex min-w-0 shrink-0 flex-col items-center gap-1 rounded-lg px-0.5 py-1 transition-colors max-sm:w-full max-sm:px-0 ${
+        midline ? 'sm:ml-[14px]' : ''
+      } ${selected ? 'z-10 bg-teal/[0.14] ring-2 ring-teal' : 'hover:bg-marble active:bg-cream'}`}
     >
       {upper ? codes : number}
-      <ToothGlyph type={toothTypeFor(fdi, primary)} status={status} upper={upper} primary={primary} scale={(primary ? 0.8 : 0.92) * scale} />
+      <ToothGlyph
+        type={toothTypeFor(fdi, primary)}
+        status={status}
+        upper={upper}
+        primary={primary}
+        scale={(primary ? 0.8 : 0.92) * scale}
+        className="max-sm:h-11 max-sm:w-full"
+      />
       {upper ? number : codes}
     </button>
   )
@@ -191,31 +201,36 @@ function Arch({
   onTap: (fdi: string) => void
 }) {
   const half = codes.length / 2
-  // Each side of the mouth is its own row group: side by side on a computer,
-  // one under the other on a phone, so every tooth is big enough to tap
-  // without scrolling sideways.
-  const sides = [codes.slice(0, half), codes.slice(half)]
+  // One line per jaw, like the paper chart: the patient's right on the left,
+  // the midline between the 1s. On a phone every tooth gets an equal share of
+  // the width, so front teeth are as easy to hit as molars.
   return (
-    <div className="flex flex-wrap items-end justify-center gap-x-[14px] gap-y-2">
-      {sides.map((side) => (
-        <div key={side[0]} className="flex flex-col items-center">
-          {upper && <span className="text-[9px] font-mono uppercase tracking-wider text-ink/35 sm:hidden">{palmer(side[0]).slice(0, 2)}</span>}
-          <div className="flex items-end gap-[3px]">
-            {side.map((fdi) => (
-              <Tooth
-                key={fdi}
-                fdi={fdi}
-                tooth={data[fdi]}
-                upper={upper}
-                selected={selected === fdi}
-                scale={scale}
-                onTap={onTap}
-              />
-            ))}
-          </div>
-          {!upper && <span className="text-[9px] font-mono uppercase tracking-wider text-ink/35 sm:hidden">{palmer(side[0]).slice(0, 2)}</span>}
-        </div>
+    <div
+      className="relative grid w-full items-end gap-x-px sm:mx-auto sm:flex sm:w-max sm:gap-[3px]"
+      style={{ gridTemplateColumns: `repeat(${codes.length}, minmax(0, 1fr))` }}
+    >
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-ink/25 sm:hidden" />
+      {codes.map((fdi, i) => (
+        <Tooth
+          key={fdi}
+          fdi={fdi}
+          tooth={data[fdi]}
+          upper={upper}
+          selected={selected === fdi}
+          scale={scale}
+          midline={i === half}
+          onTap={onTap}
+        />
       ))}
+    </div>
+  )
+}
+
+function SideLabels({ top }: { top: boolean }) {
+  return (
+    <div className="grid w-full grid-cols-2 text-center text-[10px] font-mono uppercase tracking-wider text-ink/40 sm:hidden">
+      <span>{top ? 'Upper right' : 'Lower right'}</span>
+      <span>{top ? 'Upper left' : 'Lower left'}</span>
     </div>
   )
 }
@@ -455,7 +470,7 @@ export default function DentalChart({
   const toothScale = large ? 1.18 : 1
 
   return (
-    <div className={compact ? '' : 'bg-white rounded-card shadow-soft p-5 sm:p-6'}>
+    <div className={compact ? '' : 'bg-white rounded-card shadow-soft px-2.5 py-4 sm:p-6'}>
       <div className="mb-3 flex flex-wrap items-center gap-3">
         {!compact && <h2 className="font-display text-lg text-ink-strong">Dental chart</h2>}
         <SaveBadge state={saveState} error={saveError} />
@@ -526,10 +541,12 @@ export default function DentalChart({
       {help && <CodeSheet />}
 
       <div ref={chartRef} className="mt-4 overflow-x-auto pb-1">
-        <div className="flex flex-col items-center gap-2 px-1">
+        <div className="flex flex-col items-center gap-2 px-1 max-sm:px-0">
+          <SideLabels top />
           <Arch codes={upperCodes} upper data={data} selected={selected} scale={toothScale} onTap={tapTooth} />
-          <div className="w-full max-w-lg border-t border-dashed border-ink/15" />
+          <div className="w-full max-w-lg border-t border-dashed border-ink/20 max-sm:max-w-none" />
           <Arch codes={lowerCodes} upper={false} data={data} selected={selected} scale={toothScale} onTap={tapTooth} />
+          <SideLabels top={false} />
         </div>
       </div>
 

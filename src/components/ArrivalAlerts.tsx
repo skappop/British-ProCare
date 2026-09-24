@@ -61,6 +61,84 @@ function subscribe(onChange: () => void) {
 const enabledOnClient = () => readStorage(ENABLED_KEY) === 'on'
 const enabledOnServer = () => false
 
+// One sound context per tab, shared by the alerts and the on/off switch.
+let audioCtx: AudioContext | null = null
+
+async function unlockAudio() {
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    audioCtx = audioCtx ?? new Ctx()
+    await audioCtx.resume()
+  } catch {
+    audioCtx = null
+  }
+}
+
+function chime() {
+  const ctx = audioCtx
+  if (!ctx) return
+  try {
+    // Two soft rising tones — noticeable across a surgery, not alarming.
+    ;[660, 880].forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      const start = ctx.currentTime + i * 0.18
+      osc.frequency.value = freq
+      osc.type = 'sine'
+      gain.gain.setValueAtTime(0.0001, start)
+      gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(start)
+      osc.stop(start + 0.4)
+    })
+  } catch {
+    // Audio is a nicety; never let it break the alert.
+  }
+}
+
+/**
+ * The on/off switch for this device, in the side menu — not floating over the
+ * page, where it covered the charting panel on phones.
+ */
+export function AlertsToggle() {
+  const enabled = useSyncExternalStore(subscribe, enabledOnClient, enabledOnServer)
+
+  async function toggle() {
+    if (enabled) {
+      writeStorage(ENABLED_KEY, null)
+      return
+    }
+    // Sound and system notifications both need a click to be allowed.
+    await unlockAudio()
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      try {
+        await Notification.requestPermission()
+      } catch {
+        // Permission prompts are best effort; the on-screen card still works.
+      }
+    }
+    writeStorage(ENABLED_KEY, 'on')
+    chime()
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={enabled ? 'Arrival alerts are on for this device. Tap to turn off.' : 'Sound and a notification when a patient arrives'}
+      className={`flex w-full items-center gap-2 rounded-control px-3 py-2 text-xs transition-colors ${
+        enabled ? 'bg-teal/20 text-gold-light' : 'text-white/45 hover:bg-white/[0.04] hover:text-white'
+      }`}
+    >
+      {enabled ? <Bell size={14} /> : <BellOff size={14} />}
+      {enabled ? 'Arrival alerts on' : 'Turn on arrival alerts'}
+    </button>
+  )
+}
+
 /**
  * Tells the doctor a patient has arrived: an on-screen card, a chime, and a
  * system notification that shows even when the browser is behind the imaging
@@ -77,20 +155,6 @@ export default function ArrivalAlerts() {
 
   const seen = useRef(new Set<string>())
   const clinicNames = useRef(new Map<string, string>())
-  const audio = useRef<AudioContext | null>(null)
-
-  const unlockAudio = useCallback(async () => {
-    try {
-      const Ctx =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      audio.current = audio.current ?? new Ctx()
-      await audio.current.resume()
-    } catch {
-      audio.current = null
-    }
-  }, [])
-
   // Browsers only allow sound after the user has interacted with the page, so
   // after a reload the chime would stay silent until the next click. Unlock it
   // on the first click or key press anywhere.
@@ -107,30 +171,7 @@ export default function ArrivalAlerts() {
       window.removeEventListener('pointerdown', unlock)
       window.removeEventListener('keydown', unlock)
     }
-  }, [enabled, unlockAudio])
-
-  const chime = useCallback(() => {
-    const ctx = audio.current
-    if (!ctx) return
-    try {
-      // Two soft rising tones — noticeable across a surgery, not alarming.
-      ;[660, 880].forEach((freq, i) => {
-        const osc = ctx.createOscillator()
-        const gain = ctx.createGain()
-        const start = ctx.currentTime + i * 0.18
-        osc.frequency.value = freq
-        osc.type = 'sine'
-        gain.gain.setValueAtTime(0.0001, start)
-        gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02)
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35)
-        osc.connect(gain).connect(ctx.destination)
-        osc.start(start)
-        osc.stop(start + 0.4)
-      })
-    } catch {
-      // Audio is a nicety; never let it break the alert.
-    }
-  }, [])
+  }, [enabled])
 
   const dismiss = useCallback((id: string) => {
     setToasts((list) => list.filter((t) => t.id !== id))
@@ -217,36 +258,18 @@ export default function ArrivalAlerts() {
       cancelled = true
       supabase.removeChannel(channel)
     }
-  }, [enabled, chime, dismiss, router])
+  }, [enabled, dismiss, router])
 
-  async function toggle() {
-    if (enabled) {
-      writeStorage(ENABLED_KEY, null)
-      return
-    }
+  if (toasts.length === 0) return null
 
-    // Both need a click to be allowed, which is why this lives on a button.
-    await unlockAudio()
-
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      try {
-        await Notification.requestPermission()
-      } catch {
-        // Permission prompts are best effort; the on-screen card still works.
-      }
-    }
-
-    writeStorage(ENABLED_KEY, 'on')
-    chime()
-  }
-
+  // On phones at the top, clear of the charting panel along the bottom.
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2 print:hidden">
+    <div className="fixed inset-x-4 top-16 z-50 flex flex-col items-center gap-2 print:hidden sm:inset-x-auto sm:bottom-4 sm:right-4 sm:top-auto sm:items-end">
       {toasts.map((t) => (
         <div
           key={t.id}
           role="status"
-          className="w-72 rounded-card bg-white shadow-lg border border-gold/30 p-3 flex gap-3 animate-in fade-in slide-in-from-bottom-2"
+          className="w-full max-w-sm sm:w-72 rounded-card bg-white shadow-lg border border-gold/30 p-3 flex gap-3 animate-in fade-in slide-in-from-bottom-2"
         >
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold-deep">
             <Bell size={15} />
@@ -275,23 +298,6 @@ export default function ArrivalAlerts() {
         </div>
       ))}
 
-      <button
-        type="button"
-        onClick={toggle}
-        title={
-          enabled
-            ? 'Arrival alerts are on for this device. Click to turn off.'
-            : 'Get a sound and a notification when a patient arrives'
-        }
-        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs shadow-soft transition-colors ${
-          enabled
-            ? 'bg-teal text-white hover:bg-teal-deep'
-            : 'bg-white text-ink/55 hover:text-ink-strong border border-ink/10'
-        }`}
-      >
-        {enabled ? <Bell size={13} /> : <BellOff size={13} />}
-        {enabled ? 'Arrival alerts on' : 'Turn on arrival alerts'}
-      </button>
     </div>
   )
 }
