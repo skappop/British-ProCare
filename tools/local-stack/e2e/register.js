@@ -1,0 +1,30 @@
+const { launch } = require('./browser')
+const { execSync } = require('child_process')
+const sql = (q) => execSync(`psql -h 127.0.0.1 -p 55432 -U postgres -tAc "${q}"`).toString().trim()
+let pass = 0, fail = 0; const ok = (c, m) => { c ? pass++ : fail++; console.log(c ? '  ✓' : '  ✗', m) }
+async function submit(browser, name, phone, fast = false) {
+  const p = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  await p.goto('http://localhost:3000/register', { waitUntil: 'load' })
+  if (!fast) await p.waitForTimeout(3200)
+  await p.fill('input[name=full_name]', name); await p.fill('input[name=phone]', phone)
+  await p.check('input[name=consent]')
+  await p.locator('form button').last().click()
+  await p.waitForTimeout(2000)
+  const text = await p.locator('body').innerText(); await p.close(); return text
+}
+;(async () => {
+  const b = await launch()
+  sql('delete from patient_registrations')
+  await submit(b, 'Mona Hassan', '01012345678')
+  await submit(b, 'Mona  hassan', '01012345678')
+  ok(sql("select count(*) from patient_registrations where phone='01012345678'") === '1', 'same person twice → one registration')
+  await submit(b, 'Omar Hassan', '01012345678')
+  ok(sql("select count(*) from patient_registrations where phone='01012345678'") === '2', 'child on the parent’s phone → kept separately')
+  const t = await submit(b, 'Bot', '01099999999', true)
+  ok(/very quick/.test(t) && sql("select count(*) from patient_registrations where phone='01099999999'") === '0', 'instant submission (bot) rejected')
+  sql("insert into patient_registrations (full_name, phone, consent) select 'spam', '0100' || g, true from generate_series(1,40) g")
+  const t2 = await submit(b, 'Real Person', '01055555555')
+  ok(/lot of registrations/.test(t2), 'flood of 40 in 10 minutes → form asks people to register at reception')
+  sql("delete from patient_registrations where full_name='spam'")
+  console.log(`${pass} passed, ${fail} failed`); await b.close()
+})()

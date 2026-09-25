@@ -1,0 +1,22 @@
+const { launch } = require('./browser')
+const { execSync } = require('child_process')
+const sql = (q) => execSync(`psql -q -h 127.0.0.1 -p 55432 -U postgres -tAc "${q}"`).toString().trim()
+;(async () => {
+  const tag = Date.now().toString().slice(-6)
+  sql(`insert into patient_registrations (full_name, phone, reason, consent) values ('Online ${tag}', '0155${tag}', 'toothache', true)`)
+  const b = await launch()
+  const p = await (await b.newContext({ viewport: { width: 1280, height: 900 } })).newPage()
+  let fail = 0; p.on('pageerror', (e) => { fail++; console.log('  ✗ page error', e.message) })
+  await p.goto('http://localhost:3000/login'); await p.fill('input[name=email]', 'reception@test.local'); await p.fill('input[name=password]', 'Passw0rd!')
+  await Promise.all([p.waitForURL((u) => !u.pathname.startsWith('/login')), p.getByRole('button', { name: 'Enter Clinic' }).click()])
+  await p.goto('http://localhost:3000/reception', { waitUntil: 'load' }); await p.waitForTimeout(1500)
+  const card = p.locator('div', { hasText: `Online ${tag}` }).filter({ has: p.getByRole('button', { name: /Book a time/ }) }).last()
+  await card.getByRole('button', { name: /Book a time/ }).click()
+  const reason = 'toothache'
+  await p.getByRole('button', { name: 'Tomorrow' }).click(); await p.getByLabel('Time').fill('13:00')
+  await p.getByRole('button', { name: /^Book · / }).click(); await p.waitForTimeout(2500)
+  const row = sql(`select r.status || '|' || coalesce(a.clinic_id::text,'none') || '|' || coalesce(a.notes,'') from patient_registrations r join appointments a on a.patient_id = r.patient_id where r.full_name='Online ${tag}'`)
+  const okk = row === 'accepted|none|toothache' && reason === 'toothache' && !fail
+  console.log(okk ? '  ✓' : '  ✗', 'registration booked: reason carried over, clinic on arrival —', row)
+  console.log(`${okk ? 1 : 0} passed, ${okk ? 0 : 1} failed`); await b.close()
+})()

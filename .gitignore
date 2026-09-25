@@ -58,3 +58,7 @@ Dental Agent/agent.log*
 # Each clinic PC's own settings (website address, key, export folders)
 Dental Agent/config.json
 Dental Agent/old versions/
+
+# local test stack (tools/README.md)
+tools/local-stack/.run/
+__pycache__/

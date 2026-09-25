@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Test scripts (plain Node / Python), not part of the website.
+    "tools/**",
   ]),
 ]);
 

@@ -73,5 +73,9 @@ npm run lint
 
 This is Next.js 16: read `AGENTS.md` first. Pushing to `main` deploys.
 
+Testing without touching real data: [tools/README.md](tools/README.md). Working
+with Claude on this project: `CLAUDE.md` (read automatically). Moving to a new
+email or Claude account: [docs/moving-to-a-new-account.md](docs/moving-to-a-new-account.md).
+
 Older notes and reports are in [docs/archive](docs/archive/README.md); they
 describe earlier versions and are kept only for history.
