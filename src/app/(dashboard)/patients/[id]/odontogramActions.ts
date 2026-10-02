@@ -15,6 +15,7 @@ function clean(tooth: ToothData): ToothData | null {
           at: String(f.at ?? '').slice(0, 40),
           ...(f.surfaces ? { surfaces: String(f.surfaces).slice(0, 5) } : {}),
           ...(f.note ? { note: String(f.note).slice(0, 300) } : {}),
+          ...(f.detail ? { detail: String(f.detail).slice(0, 80) } : {}),
         }))
     : undefined
   const note = tooth.note ? String(tooth.note).slice(0, 500) : undefined

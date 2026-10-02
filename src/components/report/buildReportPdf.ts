@@ -268,6 +268,15 @@ export function buildReportPdf(
   }
 
   if (mode === 'full') {
+    if (report.patient.report_notes) {
+      sectionTitle('Report notes')
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9)
+      doc.setTextColor(...INK)
+      const noteLines = doc.splitTextToSize(report.patient.report_notes, contentW)
+      doc.text(noteLines, M, y)
+      y += noteLines.length * 4.3 + 6
+    }
     // ---- treatment plan -------------------------------------------------------
     if (report.plan) {
       sectionTitle('Treatment plan')
@@ -311,6 +320,7 @@ export function buildReportPdf(
 
     // ---- dental chart -----------------------------------------------------------
     sectionTitle('Dental chart')
+    drawDentalSnapshot()
     table(
       ['Tooth', 'Status', 'Findings'],
       report.findings.length
@@ -330,6 +340,42 @@ export function buildReportPdf(
         GOLD_DEEP
       )
     }
+  }
+
+  function drawDentalSnapshot() {
+    const chartH = 37
+    ensure(chartH + 12)
+    const startX = M + 7
+    const gap = (contentW - 14) / 16
+    const statusByTooth = new Map(report.findings.map((f) => [f.raw_fdi, f.status]))
+    const fill: Record<string, RGB> = { watch: DANGER, planned: GOLD, treated: TEAL, missing: INK_SOFT, healthy: [255, 255, 255] }
+    const drawRow = (teeth: string[], y0: number) => {
+      teeth.forEach((fdi, i) => {
+        const x = startX + i * gap
+        const status = statusByTooth.get(fdi) || 'healthy'
+        doc.setFillColor(...(fill[status] || fill.healthy))
+        doc.setDrawColor(...INK_SOFT)
+        doc.setLineWidth(0.2)
+        doc.circle(x, y0, 3.2, 'FD')
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(5.5)
+        doc.setTextColor(...INK)
+        doc.text(String(i + 1), x, y0 + 1.8, { align: 'center' })
+      })
+    }
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7)
+    doc.setTextColor(...INK_SOFT)
+    doc.text('Upper', M, y + 4)
+    drawRow(['11', '12', '13', '14', '15', '16', '17', '18', '21', '22', '23', '24', '25', '26', '27', '28'], y + 3)
+    doc.text('Lower', M, y + 22)
+    drawRow(['48', '47', '46', '45', '44', '43', '42', '41', '31', '32', '33', '34', '35', '36', '37', '38'], y + 21)
+    y += chartH
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(...INK_SOFT)
+    doc.text('Red: problem  ·  gold: planned  ·  teal: treated  ·  grey: missing', M + 8, y + 2)
+    y += 8
   }
 
   // ---- images -----------------------------------------------------------------

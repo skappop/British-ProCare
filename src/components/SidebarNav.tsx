@@ -17,6 +17,7 @@ import {
   Settings as SettingsIcon,
   Smile,
   ClipboardCheck,
+  UserRoundCog,
 } from 'lucide-react'
 import { canOpen } from '@/lib/auth/access'
 
@@ -88,6 +89,7 @@ export default function SidebarNav({ config, role, stockDue = 0 }: SidebarNavPro
       icon: UserCog,
       visible: config?.features_enabled?.staff !== false
     },
+    { href: '/doctors', label: 'Clinicians', icon: UserRoundCog, visible: true },
     {
       href: '/admin/sheets',
       label: 'Google Sheets',

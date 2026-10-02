@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, FileText, Images, Loader2 } from 'lucide-react'
+import { ChevronDown, FileText, Images, Loader2, MessageCircle } from 'lucide-react'
 import { getPatientReportData } from '@/app/(dashboard)/patients/[id]/reportActions'
 import { buildReportPdf } from '@/components/report/buildReportPdf'
 import { loadReportImages, type PreparedImage, type SkippedImage } from '@/components/report/loadReportImages'
@@ -117,6 +117,36 @@ export default function PatientReportButton({
     }
   }
 
+  async function shareWhatsApp() {
+    setOpen(false)
+    setOutcome(null)
+    setLoading(true)
+    try {
+      const [report, logo] = await Promise.all([getPatientReportData(patientId), loadLogo(logoCache)])
+      if (!report) return setOutcome({ ok: false, text: 'Could not load the report' })
+      const { jsPDF } = await import('jspdf')
+      const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
+      buildReportPdf(doc, report, logo, { mode: 'full' })
+      const blob = doc.output('blob')
+      const filename = `Report - ${report.patient.full_name.replace(/[^\w\s-]/g, '').trim() || 'patient'}.pdf`
+      const file = new File([blob], filename, { type: 'application/pdf' })
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        await navigator.share({ files: [file], text: `British ProCare patient report for ${report.patient.full_name}` })
+        setOutcome({ ok: true, text: 'Report ready to share' })
+      } else {
+        doc.save(filename)
+        const number = (report.patient.phone || '').replace(/\D/g, '').replace(/^0/, '20')
+        const url = number ? `https://wa.me/${number}?text=${encodeURIComponent(`Hello, this is British ProCare Dental Clinics. I have prepared your patient report. The PDF has been downloaded here so it can be attached to this chat.`)}` : `https://web.whatsapp.com/`
+        window.open(url, '_blank', 'noopener,noreferrer')
+        setOutcome({ ok: true, text: number ? 'PDF downloaded and WhatsApp opened' : 'PDF downloaded; open WhatsApp to attach it' })
+      }
+    } catch (e) {
+      if ((e as Error)?.name !== 'AbortError') setOutcome({ ok: false, text: 'WhatsApp sharing was not completed' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const single: Kind = mode === 'images' ? 'images' : 'report+images'
   const text = loading ? progress ?? 'Preparing…' : label ?? (variant === 'menu' ? 'Download report' : KIND_LABEL[single])
   const dark = variant === 'dark' || variant === 'menu'
@@ -151,18 +181,8 @@ export default function PatientReportButton({
 
   if (variant === 'menu') {
     return (
-      <span ref={menuRef} className="relative inline-flex flex-col">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          disabled={loading}
-          aria-expanded={open}
-          className="inline-flex items-center gap-1.5 text-sm text-gold-light hover:underline disabled:opacity-70"
-        >
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-          {text}
-          {!loading && <ChevronDown size={14} />}
-        </button>
+      <span ref={menuRef} className="relative inline-flex flex-wrap items-center gap-3">
+        <span className="inline-flex flex-col"><button type="button" onClick={() => setOpen((v) => !v)} disabled={loading} aria-expanded={open} className="inline-flex items-center gap-1.5 text-sm text-gold-light hover:underline disabled:opacity-70">{loading ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}{text}{!loading && <ChevronDown size={14} />}</button>
         {open && (
           <span className="absolute left-0 top-full z-20 mt-2 w-64 overflow-hidden rounded-control bg-white py-1 text-ink shadow-soft ring-1 ring-ink/10">
             {(['report+images', 'report', 'images'] as Kind[]).map((kind) => (
@@ -187,6 +207,8 @@ export default function PatientReportButton({
             ))}
           </span>
         )}
+        </span>
+        <button type="button" onClick={shareWhatsApp} disabled={loading} className="inline-flex items-center gap-1.5 text-sm text-gold-light hover:underline disabled:opacity-70"><MessageCircle size={14} /> WhatsApp</button>
         {result && <span className="mt-1 max-w-sm">{result}</span>}
       </span>
     )

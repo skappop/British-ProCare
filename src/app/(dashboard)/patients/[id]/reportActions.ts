@@ -10,6 +10,7 @@ export type ReportVisit = {
 }
 
 export type ReportFinding = {
+  raw_fdi: string
   fdi: string
   status: string
   note?: string
@@ -57,6 +58,7 @@ export type PatientReport = {
     medications: string | null
     pregnant: boolean
     health_note: string | null
+    report_notes: string | null
   }
   visits: ReportVisit[]
   findings: ReportFinding[]
@@ -82,7 +84,7 @@ export async function getPatientReportData(patientId: string): Promise<PatientRe
 
   const { data: patient } = await supabase
     .from('patients')
-    .select('full_name, file_number, phone, date_of_birth, gender, is_ortho, medical_history, odontogram')
+    .select('full_name, file_number, phone, date_of_birth, gender, is_ortho, medical_history, odontogram, report_notes')
     .eq('id', patientId)
     .single()
 
@@ -133,6 +135,7 @@ export async function getPatientReportData(patientId: string): Promise<PatientRe
   const findings: ReportFinding[] = Object.entries(odo)
     .filter(([, v]) => v && v.status && (v.status !== 'healthy' || v.note))
     .map(([fdi, v]) => ({
+      raw_fdi: fdi,
       fdi: palmerLong(fdi),
       status: v.status,
       // What was charted, e.g. "Caries Class II (MO), Root canal treated".
@@ -192,6 +195,7 @@ export async function getPatientReportData(patientId: string): Promise<PatientRe
       medications: text(mh.medications),
       pregnant: !!mh.pregnant,
       health_note: text(mh.notes),
+      report_notes: text(patient.report_notes),
     },
     visits,
     findings,

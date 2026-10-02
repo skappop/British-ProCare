@@ -43,6 +43,7 @@ type Draft = {
   patientId: string
   procedures: Procedure[]
   isOrtho: boolean
+  canUseOrthoLog: boolean
   finishesVisit: boolean
   selectedIds: string[]
   toggle: (id: string) => void
@@ -71,12 +72,14 @@ export function VisitDraft({
   patientId,
   procedures,
   isOrtho,
+  canUseOrthoLog,
   finishesVisit = false,
   children,
 }: {
   patientId: string
   procedures: Procedure[]
   isOrtho: boolean
+  canUseOrthoLog: boolean
   /** The patient is on today's list, so saving also marks them seen. */
   finishesVisit?: boolean
   children: React.ReactNode
@@ -132,6 +135,7 @@ export function VisitDraft({
     patientId,
     procedures,
     isOrtho,
+    canUseOrthoLog,
     finishesVisit,
     selectedIds,
     toggle: (id) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id])),
@@ -154,6 +158,7 @@ export function VisitDraft({
 /** Top of the page: what is being done today. */
 export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; procedures: string[] } | null }) {
   const d = useDraft()
+  const [orthoVisitOpen, setOrthoVisitOpen] = useState(false)
   const [loadingLast, startLoading] = useTransition()
   const groupedProcedures = useMemo(() => groupByCategory(d.procedures), [d.procedures])
 
@@ -234,10 +239,10 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
           </div>
         )}
 
-        {d.isOrtho && (
+        {d.isOrtho && d.canUseOrthoLog && (
           <div className="space-y-2">
-            <label className="text-sm text-ink/70">Ortho Quick-Log</label>
-            <OrthoQuickLog key={JSON.stringify(d.lastQuickLog)} initial={d.lastQuickLog} onChange={d.setQuickLogData} />
+            <button type="button" onClick={() => { setOrthoVisitOpen((open) => !open); if (orthoVisitOpen) d.setQuickLogData(null) }} className={`flex w-full items-center justify-between rounded-control border px-4 py-3 text-left text-sm transition-colors ${orthoVisitOpen ? 'border-gold/50 bg-gold/10 text-gold-deep' : 'border-ink/12 bg-white text-ink/70 hover:border-gold/40'}`}><span><span className="block font-medium">Orthodontic visit</span><span className="block text-xs opacity-65">Open the structured wire, mechanics and elastics log</span></span><span className="rounded-full border border-current px-2 py-0.5 text-[11px]">{orthoVisitOpen ? 'Open' : 'Add'}</span></button>
+            {orthoVisitOpen && <OrthoQuickLog key={JSON.stringify(d.lastQuickLog)} initial={d.lastQuickLog} onChange={d.setQuickLogData} />}
           </div>
         )}
 

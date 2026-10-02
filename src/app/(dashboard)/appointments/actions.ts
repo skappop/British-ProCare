@@ -17,6 +17,7 @@ export async function createAppointment(formData: FormData): Promise<{ ok: boole
   const time = formData.get('time') as string
   const duration = formData.get('duration') as string
   const notes = formData.get('notes') as string
+  const doctorId = (formData.get('doctor_id') as string) || null
 
   // Prefer the exact instant the browser computed. Building it here from the
   // bare date and time would read them as UTC (the server's zone), shifting
@@ -60,12 +61,23 @@ export async function createAppointment(formData: FormData): Promise<{ ok: boole
     duration_minutes: duration ? parseInt(duration) : 30,
     notes: notes || null,
     ...(clinicId ? { clinic_id: clinicId } : {}),
+    ...(doctorId ? { doctor_id: doctorId } : {}),
   })
 
   if (error) return { ok: false, message: error.message }
 
   revalidateAll()
   return { ok: true, message: 'Appointment booked' }
+}
+
+export async function setAppointmentDoctor(appointmentId: string, doctorId: string | null) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('appointments').update({ doctor_id: doctorId || null }).eq('id', appointmentId)
+  if (error) return { ok: false, message: error.message }
+  revalidateAll()
+  revalidatePath('/reception')
+  revalidatePath('/patients')
+  return { ok: true }
 }
 
 // Advance an appointment through the day pipeline. Stamps arrival / seating

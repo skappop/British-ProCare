@@ -307,6 +307,7 @@ export default function DentalChart({
   const [input, setInput] = useState('')
   const [surfaces, setSurfaces] = useState('')
   const [toothNote, setToothNote] = useState('')
+  const [pendingImpaction, setPendingImpaction] = useState(false)
   const [help, setHelp] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -408,7 +409,7 @@ export default function DentalChart({
     base: OdontogramData,
     teeth: string[],
     codes: string[],
-    opts: { clear?: boolean; surfaces?: string; note?: string }
+    opts: { clear?: boolean; surfaces?: string; note?: string; detail?: string }
   ): Record<string, ToothData | null> {
     const at = new Date().toISOString()
     const changes: Record<string, ToothData | null> = {}
@@ -416,7 +417,7 @@ export default function DentalChart({
       let tooth: ToothData | undefined = base[fdi]
       if (opts.clear) tooth = undefined
       for (const code of codes) {
-        const f: Finding = { code, at, ...(opts.surfaces ? { surfaces: opts.surfaces } : {}), ...(opts.note ? { note: opts.note } : {}) }
+        const f: Finding = { code, at, ...(opts.surfaces ? { surfaces: opts.surfaces } : {}), ...(opts.note ? { note: opts.note } : {}), ...(opts.detail ? { detail: opts.detail } : {}) }
         tooth = addFinding(tooth, f) ?? undefined
       }
       if (codes.length === 0 && opts.note && tooth) tooth = { ...tooth, note: opts.note }
@@ -425,7 +426,7 @@ export default function DentalChart({
     return changes
   }
 
-  function apply(teeth: string[], codes: string[], opts: { clear?: boolean; surfaces?: string; note?: string }) {
+  function apply(teeth: string[], codes: string[], opts: { clear?: boolean; surfaces?: string; note?: string; detail?: string }) {
     commit(applyTo(data, teeth, codes, opts), data)
   }
 
@@ -486,6 +487,7 @@ export default function DentalChart({
     setSelected((s) => (s === fdi ? null : fdi))
     setSurfaces('')
     setToothNote('')
+    setPendingImpaction(false)
     // Only with a real keyboard: on a phone, focusing the box would pop the
     // on-screen keyboard up over the chart at every tap.
     if (hasKeyboard()) inputRef.current?.focus({ preventScroll: true })
@@ -505,6 +507,10 @@ export default function DentalChart({
 
   function tapCondition(code: string) {
     if (!selected) return
+    if (code === 'impacted') {
+      setPendingImpaction(true)
+      return
+    }
     apply([selected], [code], { surfaces: surfaces || undefined })
     setSurfaces('')
     if (hasKeyboard()) inputRef.current?.focus({ preventScroll: true })
@@ -687,6 +693,13 @@ export default function DentalChart({
               <span className="sr-only">Close</span>
             </button>
           </div>
+
+          {pendingImpaction && (
+            <div className="rounded-control border border-gold/40 bg-gold/10 p-2.5">
+              <p className="mb-1.5 text-xs font-medium text-gold-deep">Impaction type</p>
+              <div className="flex flex-wrap gap-1.5">{['Mesioangular', 'Distoangular', 'Vertical', 'Horizontal'].map((type) => <button key={type} type="button" onClick={() => { apply([selected], ['impacted'], { detail: type }); setPendingImpaction(false); setSurfaces('') }} className="rounded-full border border-gold/40 bg-white px-3 py-1.5 text-xs text-gold-deep hover:bg-gold/15">{type}</button>)}<button type="button" onClick={() => setPendingImpaction(false)} className="rounded-full px-3 py-1.5 text-xs text-ink/45">Cancel</button></div>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-[10px] font-mono uppercase tracking-wider text-ink/40">Surf.</span>

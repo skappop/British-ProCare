@@ -2,7 +2,7 @@
 create table patients (
   id uuid primary key default gen_random_uuid(),
   full_name text not null, phone text, email text, file_number text, date_of_birth date, gender text,
-  is_ortho boolean default false, medical_history text, odontogram jsonb default '{}'::jsonb,
+  is_ortho boolean default false, medical_history text, odontogram jsonb default '{}'::jsonb, report_notes text, private_notes text,
   status text default 'active', consent_signed_at timestamptz, created_at timestamptz default now(), updated_at timestamptz default now()
 );
 create table procedures (
@@ -20,9 +20,18 @@ create table procedure_bom (
 );
 create table visits (
   id uuid primary key default gen_random_uuid(), patient_id uuid references patients(id) on delete cascade,
-  visit_date timestamptz default now(), notes text, fee_charged numeric, ortho_quick_log jsonb, paid_at timestamptz,
+  visit_date timestamptz default now(), notes text, report_notes text, private_notes text, fee_charged numeric, ortho_quick_log jsonb, ortho_log jsonb, doctor_id uuid, clinic_id uuid, paid_at timestamptz,
   created_by uuid default auth.uid(), created_at timestamptz default now()
 );
+create table clinics (
+  id uuid primary key default gen_random_uuid(), name text not null unique, short_name text, sort_order int not null default 0,
+  is_active boolean not null default true, created_at timestamptz default now()
+);
+create table doctors (
+  id uuid primary key default gen_random_uuid(), full_name text not null, title text, specialization text, phone text, email text,
+  bio text, profile_image_path text, active boolean not null default true, created_at timestamptz default now(), updated_at timestamptz default now()
+);
+create table doctor_clinics (doctor_id uuid references doctors(id) on delete cascade, clinic_id uuid references clinics(id) on delete cascade, primary key (doctor_id, clinic_id));
 create table visit_procedures (
   id uuid primary key default gen_random_uuid(), visit_id uuid references visits(id) on delete cascade,
   procedure_id uuid references procedures(id), fee numeric, quantity integer default 1

@@ -10,6 +10,8 @@ type ApptRow = {
   notes: string | null
   duration_minutes: number
   clinic_id: string | null
+  doctor_id: string | null
+  doctors: { full_name: string; title: string | null } | { full_name: string; title: string | null }[] | null
   clinics: { name: string } | { name: string }[] | null
 }
 
@@ -29,7 +31,7 @@ export async function getVisitState(patientId: string): Promise<{
 
   const { data } = await supabase
     .from('appointments')
-    .select('id, status, scheduled_at, arrived_at, seated_at, notes, duration_minutes, clinic_id, clinics(name)')
+    .select('id, status, scheduled_at, arrived_at, seated_at, notes, duration_minutes, clinic_id, doctor_id, doctors(full_name, title), clinics(name)')
     .eq('patient_id', patientId)
     .in('status', ['scheduled', 'arrived', 'in_chair', 'completed'])
     .gte('scheduled_at', new Date(now - 18 * 3600_000).toISOString())
@@ -61,6 +63,8 @@ export async function getVisitState(patientId: string): Promise<{
           seated_at: current.seated_at,
           clinic: current.clinic,
           notes: current.notes,
+          doctor_id: current.doctor_id,
+          doctor_name: current.doctors ? `${(Array.isArray(current.doctors) ? current.doctors[0]?.title : current.doctors.title) ? `${Array.isArray(current.doctors) ? current.doctors[0]?.title : current.doctors.title} ` : ''}${Array.isArray(current.doctors) ? current.doctors[0]?.full_name : current.doctors.full_name}` : null,
         }
       : null,
     currentClinicId: current?.clinic_id ?? seen?.clinic_id ?? null,

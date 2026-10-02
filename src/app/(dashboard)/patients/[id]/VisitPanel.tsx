@@ -3,7 +3,8 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { CalendarPlus, CheckCircle2, Clock, Stethoscope } from 'lucide-react'
-import { createAppointment, updateAppointmentStatus } from '../../appointments/actions'
+import { createAppointment, setAppointmentDoctor, updateAppointmentStatus } from '../../appointments/actions'
+import { getDoctorOptions } from '../../reception/receptionActions'
 import { localDateTimeToIso } from '@/lib/utils'
 
 export type CurrentVisit = {
@@ -14,6 +15,8 @@ export type CurrentVisit = {
   seated_at: string | null
   clinic: string | null
   notes: string | null
+  doctor_id: string | null
+  doctor_name: string | null
 }
 
 export type SeenVisit = { id: string; clinic: string | null }
@@ -69,6 +72,12 @@ export default function VisitPanel({
   const [duration, setDuration] = useState('30')
   const [clinicId, setClinicId] = useState(defaultClinicId ?? clinics[0]?.id ?? '')
   const [note, setNote] = useState('')
+  const [doctors, setDoctors] = useState<{ id: string; full_name: string; title: string | null; profile_image_url: string | null }[]>([])
+  const [doctorPending, startDoctorTransition] = useTransition()
+
+  useEffect(() => {
+    if (part === 'status' && current && !current.doctor_id) getDoctorOptions(null).then((list) => setDoctors(list as typeof doctors))
+  }, [part, current])
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30000)
@@ -124,6 +133,13 @@ export default function VisitPanel({
     if (!current && !seenToday) return null
     return (
       <div className="bg-white rounded-card shadow-soft px-5 py-4 space-y-3">
+      {current && (current.status === 'arrived' || current.status === 'in_chair') && !current.doctor_id && doctors.length > 0 && (
+        <div className="rounded-control border border-gold/40 bg-gold/10 p-3">
+          <p className="text-sm font-medium text-ink-strong">Choose the clinician for this visit</p>
+          <p className="mt-1 text-xs text-ink/50">This shared computer does not infer the doctor from the login.</p>
+          <div className="mt-2 flex flex-wrap gap-2">{doctors.map((doctor) => <button key={doctor.id} type="button" disabled={doctorPending} onClick={() => startDoctorTransition(async () => { const res = await setAppointmentDoctor(current.id, doctor.id); if (!res.ok) setMessage({ ok: false, text: res.message || 'Could not assign doctor' }); else router.refresh() })} className="inline-flex items-center gap-1.5 rounded-full border border-ink/15 bg-white px-3 py-1.5 text-xs text-ink/75 hover:border-teal disabled:opacity-50">{doctor.profile_image_url ? <img src={doctor.profile_image_url} alt="" className="h-4 w-4 rounded-full object-cover" /> : <Stethoscope size={12} />}{doctor.title ? `${doctor.title} ` : ''}{doctor.full_name}</button>)}</div>
+        </div>
+      )}
       {current && current.status !== 'scheduled' ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -138,6 +154,7 @@ export default function VisitPanel({
                 : `Here · waiting ${mins(current.arrived_at, now)} min`}
             </span>
             {current.clinic && <span className="text-xs text-ink/45">{current.clinic}</span>}
+            {current.doctor_name && <span className="text-xs text-ink/45">{current.doctor_name}</span>}
           </div>
           <div className="flex items-center gap-3">
             <button

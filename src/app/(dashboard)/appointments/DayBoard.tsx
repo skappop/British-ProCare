@@ -29,6 +29,8 @@ export type BoardAppointment = {
   seated_at: string | null
   clinic_id?: string | null
   clinic_name?: string | null
+  doctor_id?: string | null
+  doctor_name?: string | null
   /** Seen patients only, for staff who take money: what the patient still owes overall. */
   balance_due?: number | null
   /** Seen patients only, for staff who take money: where they stand with payment. */
@@ -141,6 +143,7 @@ function Card({
               </span>
             )}
             {appt.patients?.is_ortho && <span className="text-[10px] text-gold-deep">· Ortho</span>}
+            {appt.doctor_name && <span className="text-[10px] text-ink/45">· {appt.doctor_name}</span>}
           </div>
           {nameHref ? (
             <Link
@@ -260,7 +263,7 @@ function Card({
 function StartVisit({ patientId }: { patientId: string }) {
   return (
     <Link
-      href={`/patients/${patientId}`}
+      href={`/patients/${patientId}?start=1`}
       className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-control bg-teal text-white hover:bg-teal-deep transition-colors"
     >
       <Stethoscope size={12} /> Start visit

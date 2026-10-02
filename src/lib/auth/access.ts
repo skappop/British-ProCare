@@ -35,6 +35,7 @@ const RULES: [prefix: string, roles: StaffRole[]][] = [
   ['/receipts', ['owner', 'assistant']], // amounts paid
   ['/reports', ['owner']],
   ['/staff', ['owner']],
+  ['/doctors', ['owner']],
   ['/settings', ['owner']],
   ['/admin', ['owner']],
   ['/appointments', ALL],

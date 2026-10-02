@@ -1,14 +1,15 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Building2, CalendarPlus, Check, Stethoscope } from 'lucide-react'
+import { Building2, CalendarPlus, Check, Stethoscope, UserRound } from 'lucide-react'
 import type { ReceptionPatient, SafetyAlerts } from '../types'
-import { getClinicOptions, sendPatientToClinic } from '../receptionActions'
+import { getClinicOptions, getDoctorOptions, sendPatientToClinic } from '../receptionActions'
 import { StepCard, GhostButton } from '../ui'
 import { createAppointment } from '../../appointments/actions'
 import BookSlot, { slotForm } from '@/components/BookSlot'
 
 type ClinicOption = { id: string; name: string; short_name: string | null }
+type DoctorOption = { id: string; full_name: string; title: string | null; specialization: string | null; profile_image_url: string | null }
 
 /**
  * The hand-off. Reception picks a clinic and the patient lands in that board's
@@ -39,6 +40,8 @@ export default function StepSendToClinic({
   onHandleHere: () => void
 }) {
   const [clinics, setClinics] = useState<ClinicOption[] | null>(null)
+  const [doctors, setDoctors] = useState<DoctorOption[]>([])
+  const [doctorId, setDoctorId] = useState('')
   // Pre-filled with the reason the patient gave when registering online.
   const [note, setNote] = useState(initialNote ?? '')
   const [error, setError] = useState<string | null>(null)
@@ -56,10 +59,15 @@ export default function StepSendToClinic({
     }
   }, [])
 
+  useEffect(() => {
+    if (!clinics?.length) return
+    getDoctorOptions(null).then((list) => setDoctors(list as DoctorOption[]))
+  }, [clinics])
+
   function send(clinic: ClinicOption) {
     setError(null)
     startTransition(async () => {
-      const res = await sendPatientToClinic(patient.id, clinic.id, note, bookedAppointmentId)
+      const res = await sendPatientToClinic(patient.id, clinic.id, note, bookedAppointmentId, doctorId || null)
       if (res.ok) onSent(clinic.name)
       else setError(res.message || 'Could not send the patient')
     })
@@ -88,6 +96,17 @@ export default function StepSendToClinic({
           className="w-full rounded-control border border-ink/15 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal"
         />
       </div>
+
+      {doctors.length > 0 && (
+        <div className="mt-5 space-y-2">
+          <div className="flex items-center gap-2"><UserRound size={15} className="text-teal-deep" /><label className="text-sm text-ink/70">Assign a doctor now <span className="text-ink/35">(optional)</span></label></div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setDoctorId('')} className={`rounded-full border px-3 py-1.5 text-xs ${!doctorId ? 'border-teal bg-teal text-white' : 'border-ink/15 text-ink/65'}`}>Leave for doctor</button>
+            {doctors.map((doctor) => <button key={doctor.id} type="button" onClick={() => setDoctorId(doctor.id)} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs ${doctorId === doctor.id ? 'border-teal bg-teal text-white' : 'border-ink/15 text-ink/65 hover:border-teal'}`}>{doctor.profile_image_url ? <img src={doctor.profile_image_url} alt="" className="h-4 w-4 rounded-full object-cover" /> : <UserRound size={12} />}{doctor.title ? `${doctor.title} ` : ''}{doctor.full_name}</button>)}
+          </div>
+          <p className="text-[11px] text-ink/40">If left blank, the clinician must choose their name before starting treatment.</p>
+        </div>
+      )}
 
       {later ? (
         <div className="mt-6 space-y-3">

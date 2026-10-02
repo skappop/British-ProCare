@@ -48,7 +48,7 @@ export default async function AppointmentsPage({
   const rangeEnd = view === 'week' ? addDays(rangeStart, 7) : addDays(rangeStart, 1)
 
   const BASE_COLUMNS =
-    'id, scheduled_at, duration_minutes, status, notes, arrived_at, seated_at, patients(id, full_name, phone, is_ortho)'
+    'id, scheduled_at, duration_minutes, status, notes, arrived_at, seated_at, doctor_id, doctors(full_name, title), patients(id, full_name, phone, is_ortho)'
 
   async function fetchAppointments(withClinic: boolean) {
     const query = supabase
@@ -79,6 +79,8 @@ export default async function AppointmentsPage({
     clinic_name: clinics.find((c) => c.id === a.clinic_id)?.short_name
       ?? clinics.find((c) => c.id === a.clinic_id)?.name
       ?? null,
+    doctor_id: a.doctor_id ?? null,
+    doctor_name: a.doctors?.full_name ? `${a.doctors.title ? `${a.doctors.title} ` : ''}${a.doctors.full_name}` : null,
     patients: a.patients
       ? {
           id: a.patients.id,

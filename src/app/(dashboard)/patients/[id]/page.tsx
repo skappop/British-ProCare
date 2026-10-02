@@ -12,15 +12,21 @@ import { getVisitState } from './visitState'
 import { getClinics } from '@/lib/clinics'
 import TreatmentPlanPanel from './TreatmentPlanPanel'
 import PatientLabCases from './PatientLabCases'
-import { canHandleMoney, isOwner } from '@/lib/auth/role'
+import PatientNotes from './PatientNotes'
+import { canHandleMoney, getCurrentUserRole, isOwner } from '@/lib/auth/role'
 
 function formatQuickLog(log: any): string[] {
   if (!log) return []
   const lines: string[] = []
-  if (log.upper_wire) lines.push(`Upper: ${log.upper_wire.material} ${log.upper_wire.dimension}`)
-  if (log.lower_wire) lines.push(`Lower: ${log.lower_wire.material} ${log.lower_wire.dimension}`)
-  if (log.mechanics?.length) lines.push(`Mechanics: ${log.mechanics.join(', ')}`)
-  if (log.elastics) lines.push(`Elastics: ${log.elastics.config} (${log.elastics.size})`)
+  if (log.upper_wire) lines.push(`Upper: ${log.upper_wire.action || 'Changed'} ${log.upper_wire.material} ${log.upper_wire.size || log.upper_wire.dimension}`)
+  if (log.lower_wire) lines.push(`Lower: ${log.lower_wire.action || 'Changed'} ${log.lower_wire.material} ${log.lower_wire.size || log.lower_wire.dimension}`)
+  if (log.mechanics?.length) lines.push(`Mechanics: ${log.mechanics.map((m: any) => typeof m === 'string' ? m : `${m.type}${m.position ? ` (${m.position})` : ''}`).join(', ')}`)
+  if (Array.isArray(log.elastics) && log.elastics.length) lines.push(`Elastics: ${log.elastics.map((e: any) => `${e.vector} ${e.size} ${e.force}`).join(', ')}`)
+  else if (log.elastics) lines.push(`Elastics: ${log.elastics.config} (${log.elastics.size})`)
+  if (log.tads?.length) lines.push(`TADs: ${log.tads.map((t: any) => `${t.location} ${t.size}`).join(', ')}`)
+  if (log.maintenance?.length) lines.push(`Repairs: ${log.maintenance.join(', ')}`)
+  if (log.hygiene) lines.push(`Hygiene: ${log.hygiene}`)
+  if (log.elastic_compliance) lines.push(`Elastics: ${log.elastic_compliance}`)
   if (log.next_visit_weeks) lines.push(`Next visit: ${log.next_visit_weeks} wks`)
   return lines
 }
@@ -32,8 +38,13 @@ export default async function PatientProfilePage({
 }) {
   const { id } = await params
   const supabase = await createClient()
+  const role = await getCurrentUserRole()
 
-  const { data: patient } = await supabase.from('patients').select('*').eq('id', id).single()
+  const patientColumns = role === 'assistant'
+    ? 'id, full_name, phone, email, file_number, date_of_birth, gender, is_ortho, medical_history, odontogram, notes, status, consent_signed_at, created_at, updated_at, report_notes'
+    : 'id, full_name, phone, email, file_number, date_of_birth, gender, is_ortho, medical_history, odontogram, notes, status, consent_signed_at, created_at, updated_at, report_notes, private_notes'
+  const { data: patientRow } = await supabase.from('patients').select(patientColumns).eq('id', id).single()
+  const patient = patientRow as any
   if (!patient) notFound()
 
   const { data: visits } = await supabase
@@ -52,6 +63,7 @@ export default async function PatientProfilePage({
   // no fees, balances or payments appear on it for anyone. The front desk gets
   // a plain link to the separate billing page — no figures.
   const showBillingLink = await canHandleMoney()
+  const canEditPastVisits = await isOwner()
 
   // Today's visit and what's booked next, for the doctor to run from here.
   const { currentVisit, currentClinicId, seenToday, upcoming } = await getVisitState(id)
@@ -116,6 +128,10 @@ export default async function PatientProfilePage({
       <div className="flex justify-between text-sm">
         <span className="font-mono text-ink/70">
           {new Date(v.visit_date).toLocaleDateString()}
+        </span>
+        <span className="flex items-center gap-3 text-xs">
+          {showBillingLink && <Link href={`/receipts/visit/${v.id}`} target="_blank" className="text-teal-deep hover:underline">Invoice</Link>}
+          {canEditPastVisits && <Link href={`/patients/${id}/visits/${v.id}/edit`} className="text-teal-deep hover:underline">Edit visit</Link>}
         </span>
       </div>
 
@@ -218,6 +234,13 @@ export default async function PatientProfilePage({
         </div>
       )}
 
+      <PatientNotes
+        patientId={id}
+        initialReport={patient.report_notes || ''}
+        initialPrivate={role === 'assistant' ? '' : patient.private_notes || ''}
+        canSeePrivate={role !== 'assistant'}
+      />
+
       {/* The page follows the visit: who is here, what is done today, the
           chart and imaging taken while doing it, then the rest of the record,
           and last of all "treatment completed" with the next booking. */}
@@ -225,6 +248,7 @@ export default async function PatientProfilePage({
         patientId={id}
         procedures={procedures || []}
         isOrtho={patient.is_ortho}
+        canUseOrthoLog={role !== 'assistant'}
         finishesVisit={!!currentVisit}
       >
         <VisitPanel part="status" {...visitProps} />
@@ -244,7 +268,7 @@ export default async function PatientProfilePage({
           />
         )}
 
-        <PatientLabCases patientId={id} initialCases={labCases || []} showLabFee={await isOwner()} />
+        <PatientLabCases patientId={id} initialCases={labCases || []} showLabFee={canEditPastVisits} />
 
         <details className="bg-white rounded-card shadow-soft group">
           <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4">

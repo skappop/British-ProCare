@@ -9,6 +9,7 @@ export type Finding = {
   /** Surfaces, e.g. "MO". */
   surfaces?: string
   note?: string
+  detail?: string
   /** When it was charted (ISO). */
   at: string
 }
@@ -67,7 +68,7 @@ export function condition(code: string): Condition | undefined {
 
 export function findingLabel(f: Finding): string {
   const c = BY_CODE.get(f.code)
-  return [c?.label ?? f.code, f.surfaces ? `(${f.surfaces})` : '', f.note ? `— ${f.note}` : '']
+  return [c?.label ?? f.code, f.detail ? `· ${f.detail}` : '', f.surfaces ? `(${f.surfaces})` : '', f.note ? `— ${f.note}` : '']
     .filter(Boolean)
     .join(' ')
 }

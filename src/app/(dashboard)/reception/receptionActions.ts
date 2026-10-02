@@ -11,6 +11,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { MedicalHistory, PatientSafety, ReceptionPatient } from './types'
+import { listDoctors } from '@/lib/doctors'
 
 export async function searchWalkInPatients(query: string): Promise<ReceptionPatient[]> {
   const supabase = await createClient()
@@ -167,7 +168,8 @@ export async function sendPatientToClinic(
   patientId: string,
   clinicId: string,
   notes?: string,
-  bookedAppointmentId?: string | null
+  bookedAppointmentId?: string | null,
+  doctorId?: string | null
 ): Promise<{ ok: boolean; message?: string; appointmentId?: string }> {
   const supabase = await createClient()
 
@@ -203,6 +205,7 @@ export async function sendPatientToClinic(
           status: 'arrived',
           arrived_at: now,
           notes: note ? [existing.notes, note].filter(Boolean).join(' — ') : existing.notes,
+          ...(doctorId ? { doctor_id: doctorId } : {}),
         })
         .eq('id', existing.id)
         .select('id')
@@ -217,6 +220,7 @@ export async function sendPatientToClinic(
           status: 'arrived',
           duration_minutes: 30,
           notes: note,
+          ...(doctorId ? { doctor_id: doctorId } : {}),
         })
         .select('id')
         .single()
@@ -247,6 +251,10 @@ export async function sendPatientToClinic(
   revalidatePath('/reception')
 
   return { ok: true, appointmentId: data.id }
+}
+
+export async function getDoctorOptions(clinicId?: string | null) {
+  return listDoctors({ clinicId: clinicId || undefined })
 }
 
 /** Clinics available to send a patient to. */
