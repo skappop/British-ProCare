@@ -19,7 +19,7 @@ export default async function VisitInvoice({ params }: { params: Promise<{ visit
 
   const { data: visit } = await supabase
     .from('visits')
-    .select('id, patient_id, visit_date, fee_charged, notes, visit_procedures(procedures(name, code)), patients(full_name, file_number, phone)')
+    .select('id, patient_id, visit_date, fee_charged, gross_fee, discount_type, discount_value, discount_amount, discount_note, notes, visit_procedures(procedures(name, code)), patients(full_name, file_number, phone)')
     .eq('id', visitId)
     .maybeSingle()
 
@@ -46,6 +46,8 @@ export default async function VisitInvoice({ params }: { params: Promise<{ visit
 
   const visitDate = new Date(visit.visit_date)
   const fee = visit.fee_charged !== null ? Number(visit.fee_charged) : null
+  const grossFee = visit.gross_fee !== null && visit.gross_fee !== undefined ? Number(visit.gross_fee) : fee
+  const discountAmount = Number(visit.discount_amount) || 0
   const paidForThisVisit = (payments ?? []).reduce((s, p) => s + (Number(p.amount) || 0), 0)
 
   return (
@@ -104,12 +106,9 @@ export default async function VisitInvoice({ params }: { params: Promise<{ visit
         )}
 
         <div className="mb-4 space-y-2 border-t border-gray-200 pt-4">
-          <div className="flex justify-between text-sm">
-            <span>Fee for this visit</span>
-            <span className="font-mono font-medium">
-              {fee !== null ? egp(fee) : <span className="text-gray-400">Not set</span>}
-            </span>
-          </div>
+          {grossFee !== null && discountAmount > 0 && <div className="flex justify-between text-sm"><span>Price before discount</span><span className="font-mono">{egp(grossFee)}</span></div>}
+          {discountAmount > 0 && <div className="flex justify-between text-sm text-emerald-700"><span>Discount{visit.discount_note ? ` · ${visit.discount_note}` : ''}</span><span className="font-mono">− {egp(discountAmount)}</span></div>}
+          <div className="flex justify-between text-sm"><span>Fee for this visit</span><span className="font-mono font-medium">{fee !== null ? egp(fee) : <span className="text-gray-400">Not set</span>}</span></div>
           {paidForThisVisit > 0 && fee !== null && (
             <>
               <div className="flex justify-between text-sm text-gray-600">

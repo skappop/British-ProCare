@@ -6,10 +6,10 @@ import Link from 'next/link'
 import { CheckCircle2, FileText, Pencil, Printer, X } from 'lucide-react'
 import { takePayment, removePayment } from './billingActions'
 import { PAYMENT_METHODS, methodLabel } from './methods'
-import { updateVisitFee } from '../actions'
+import { applyVisitDiscount, updateVisitFee } from '../actions'
 
 export type HistoryItem =
-  | { kind: 'visit'; id: string; at: string; amount: number; priced: boolean; what: string }
+  | { kind: 'visit'; id: string; at: string; amount: number; priced: boolean; what: string; grossAmount?: number; discountAmount?: number; discountLabel?: string }
   | { kind: 'payment'; id: string; at: string; amount: number; method: string; what: string }
 
 const egp = (n: number) => `EGP ${Math.round(n).toLocaleString()}`
@@ -39,6 +39,7 @@ export default function BillingDesk({
   const [discountOpen, setDiscountOpen] = useState(false)
   const [discountMode, setDiscountMode] = useState<'percent' | 'fixed'>('percent')
   const [discountValue, setDiscountValue] = useState('10')
+  const [discountNote, setDiscountNote] = useState('')
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
 
@@ -46,10 +47,11 @@ export default function BillingDesk({
   const label = PAYMENT_METHODS.find((m) => m.value === method)?.label ?? ''
   const latestVisit = useMemo(() => history.find((h): h is Extract<HistoryItem, { kind: 'visit' }> => h.kind === 'visit' && h.amount > 0), [history])
   const discount = Number(discountValue) || 0
+  const latestGross = latestVisit?.grossAmount ?? latestVisit?.amount ?? 0
   const discountAmount = latestVisit
-    ? Math.min(latestVisit.amount, discountMode === 'percent' ? latestVisit.amount * Math.min(discount, 100) / 100 : Math.max(discount, 0))
+    ? Math.min(latestGross, discountMode === 'percent' ? latestGross * Math.min(discount, 100) / 100 : Math.max(discount, 0))
     : 0
-  const adjustedVisitTotal = latestVisit ? Math.max(0, latestVisit.amount - discountAmount) : 0
+  const adjustedVisitTotal = latestVisit ? Math.max(0, latestGross - discountAmount) : 0
 
   const [duplicate, setDuplicate] = useState<string | null>(null)
 
@@ -77,6 +79,18 @@ export default function BillingDesk({
     })
   }
 
+  function applyDiscount() {
+    if (!latestVisit) return
+    setError(null)
+    startTransition(async () => {
+      const res = await applyVisitDiscount(latestVisit.id, patientId, discountMode, discountValue, discountNote)
+      if (!res.ok) return setError(res.message || 'Could not apply the discount')
+      setDiscountOpen(false)
+      setDiscountNote('')
+      router.refresh()
+    })
+  }
+
   function remove(paymentId: string, amountPaid: number) {
     if (!confirm(`Remove the payment of ${egp(amountPaid)}? Only do this if it was entered by mistake.`)) return
     startTransition(async () => {
@@ -97,11 +111,19 @@ export default function BillingDesk({
           <p className="mt-1 font-display text-3xl text-gold-light">Owes {egp(balance)}</p>
         ) : (
           <p className="mt-1 inline-flex items-center gap-2 font-display text-3xl text-success">
-            <CheckCircle2 size={26} /> All paid
+            <CheckCircle2 size={26} /> No balance due
             {balance < 0 && <span className="text-base text-ink/55">({egp(-balance)} in credit)</span>}
           </p>
         )}
       </div>
+
+      {latestVisit && (
+        <div className="rounded-card border border-teal/15 bg-white p-5 shadow-soft">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-gold-deep">Current visit</p>
+          <div className="mt-2 flex flex-wrap items-start justify-between gap-3"><div><h2 className="font-display text-lg text-ink-strong">{day(latestVisit.at)}</h2><p className="mt-1 text-sm text-ink/55">{latestVisit.what || 'Dental treatment'}</p></div><div className="text-right"><p className="font-mono text-lg text-ink-strong">{egp(latestVisit.amount)}</p>{latestVisit.discountAmount ? <p className="text-xs text-gold-deep">after {egp(latestVisit.discountAmount)} discount</p> : null}<p className="text-xs text-ink/45">added to the account</p></div></div>
+          <p className="mt-3 border-t border-ink/8 pt-3 text-xs text-ink/50">This visit is listed in account activity because it creates the charge. Payments below reduce the balance; the visit itself is not a second payment.</p>
+        </div>
+      )}
 
       {/* 2. Take the payment */}
       <div className="space-y-4 rounded-card bg-white p-6 shadow-soft">
@@ -156,9 +178,10 @@ export default function BillingDesk({
 
         {balance > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-ink/45">Installment:</span>
+            <span className="text-ink/45">Payment plan amount:</span>
             {[25, 50].map((percent) => <button key={percent} type="button" onClick={() => setAmount(String(Math.round(balance * percent / 100)))} className="rounded-full border border-ink/15 px-3 py-1.5 text-ink/65 hover:border-teal hover:text-teal-deep">{percent}% · {egp(balance * percent / 100)}</button>)}
             <button type="button" onClick={() => setAmount(String(balance))} className="rounded-full border border-teal/30 bg-teal/5 px-3 py-1.5 text-teal-deep">Full</button>
+            <span className="basis-full text-ink/40">Each button records one payment. Any remaining balance stays due.</span>
           </div>
         )}
 
@@ -176,7 +199,8 @@ export default function BillingDesk({
                   <input inputMode="decimal" aria-label="Discount" value={discountValue} onChange={(e) => setDiscountValue(e.target.value.replace(/[^\d.]/g, ''))} className="w-24 rounded-control border border-ink/15 bg-white px-3 py-1.5 text-right font-mono text-sm" />
                   <span className="self-center text-xs text-ink/45">{discountMode === 'percent' ? '%' : 'EGP'}</span>
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 text-sm"><span className="text-ink/60">New visit total <strong className="font-mono text-ink-strong">{egp(adjustedVisitTotal)}</strong></span><button type="button" disabled={isPending || discountAmount <= 0} onClick={() => savePrice(latestVisit.id, String(adjustedVisitTotal))} className="rounded-control bg-teal px-3 py-2 text-xs font-medium text-white disabled:bg-ink/20">Apply discount</button></div>
+                <input value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} placeholder="Reason (optional) - e.g. staff family discount" className="w-full rounded-control border border-ink/15 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm"><span className="text-ink/60">New visit total <strong className="font-mono text-ink-strong">{egp(adjustedVisitTotal)}</strong></span><button type="button" disabled={isPending || discountAmount <= 0} onClick={applyDiscount} className="rounded-control bg-teal px-3 py-2 text-xs font-medium text-white disabled:bg-ink/20">Apply discount</button></div>
               </div>
             )}
           </div>
@@ -263,7 +287,7 @@ export default function BillingDesk({
                     title="Change the price (discount or correction)"
                     className="group inline-flex items-center gap-1.5 font-mono text-sm text-ink-strong"
                   >
-                    {h.amount === 0 ? 'No charge' : egp(h.amount)}
+                    <span className="text-right">{h.amount === 0 ? 'No charge' : egp(h.amount)}{h.discountAmount ? <span className="block text-[10px] font-sans text-gold-deep">{egp(h.discountAmount)} discount</span> : null}</span>
                     <Pencil size={12} className="text-ink/25 group-hover:text-teal-deep" />
                   </button>
                   <a

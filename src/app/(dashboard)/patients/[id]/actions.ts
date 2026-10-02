@@ -76,6 +76,7 @@ export async function logVisit(formData: FormData) {
       ...(finished.doctorId ? { doctor_id: finished.doctorId } : {}),
       ...(finished.clinicId ? { clinic_id: finished.clinicId } : {}),
       report_notes: notes || null,
+      ...(feeValue !== null ? { gross_fee: feeValue, discount_type: null, discount_value: 0, discount_amount: 0, discount_note: null } : {}),
       ...(quickLog ? { ortho_log: quickLog } : {}),
       ...(clinicalLogs ? { clinical_logs: clinicalLogs } : {}),
     }).eq('id', visitId)
@@ -324,7 +325,7 @@ export async function updateVisitFee(
   const supabase = await createClient()
   const { error } = await supabase
     .from('visits')
-    .update({ fee_charged: value })
+    .update({ fee_charged: value, gross_fee: value, discount_type: null, discount_value: 0, discount_amount: 0, discount_note: null })
     .eq('id', visitId)
     .eq('patient_id', patientId)
 
@@ -333,6 +334,39 @@ export async function updateVisitFee(
   revalidatePath(`/patients/${patientId}/billing`)
   revalidatePath('/appointments')
   revalidatePath('/patients')
+  revalidatePath('/reception')
+  return { ok: true }
+}
+
+export async function applyVisitDiscount(
+  visitId: string,
+  patientId: string,
+  type: 'percent' | 'fixed',
+  valueInput: string,
+  note: string
+): Promise<{ ok: boolean; message?: string }> {
+  const { canHandleMoney } = await import('@/lib/auth/role')
+  if (!(await canHandleMoney())) return { ok: false, message: 'Not allowed' }
+  const value = Number(valueInput)
+  if (!Number.isFinite(value) || value < 0 || (type === 'percent' && value > 100)) return { ok: false, message: 'Enter a valid discount' }
+
+  const supabase = await createClient()
+  const { data: visit, error: readError } = await supabase.from('visits').select('fee_charged, gross_fee').eq('id', visitId).eq('patient_id', patientId).single()
+  if (readError || !visit) return { ok: false, message: readError?.message || 'Visit not found' }
+  const gross = Number(visit.gross_fee ?? visit.fee_charged) || 0
+  const discountAmount = Math.min(gross, type === 'percent' ? gross * value / 100 : value)
+  const { error } = await supabase.from('visits').update({
+    gross_fee: gross,
+    fee_charged: Math.max(0, gross - discountAmount),
+    discount_type: type,
+    discount_value: value,
+    discount_amount: discountAmount,
+    discount_note: note.trim() || null,
+  }).eq('id', visitId).eq('patient_id', patientId)
+  if (error) return { ok: false, message: error.message }
+  revalidatePath(`/patients/${patientId}/billing`)
+  revalidatePath(`/receipts/visit/${visitId}`)
+  revalidatePath('/appointments')
   revalidatePath('/reception')
   return { ok: true }
 }

@@ -21,7 +21,7 @@ export default async function BillingPage({ params }: { params: Promise<{ id: st
   const [{ data: visits }, { data: payments }] = await Promise.all([
       supabase
       .from('visits')
-      .select('id, visit_date, fee_charged, visit_procedures(procedures(name, base_fee))')
+      .select('id, visit_date, fee_charged, gross_fee, discount_type, discount_value, discount_amount, discount_note, visit_procedures(procedures(name, base_fee))')
       .eq('patient_id', id)
       .order('visit_date', { ascending: false }),
     supabase.from('payments').select('id, amount, method, note, paid_at').eq('patient_id', id).order('paid_at', { ascending: false }),
@@ -31,6 +31,11 @@ export default async function BillingPage({ params }: { params: Promise<{ id: st
     id: string
     visit_date: string
     fee_charged: number | null
+    gross_fee: number | null
+    discount_type: string | null
+    discount_value: number | null
+    discount_amount: number | null
+    discount_note: string | null
     visit_procedures: { procedures: { name: string; base_fee: number | null } | { name: string; base_fee: number | null }[] | null }[] | null
   }
   const history: HistoryItem[] = [
@@ -45,6 +50,9 @@ export default async function BillingPage({ params }: { params: Promise<{ id: st
             return sum + (Number(procedure?.base_fee) || 0)
           }, 0),
       priced: true,
+      grossAmount: v.gross_fee !== null && v.gross_fee !== undefined ? Number(v.gross_fee) || 0 : undefined,
+      discountAmount: Number(v.discount_amount) || 0,
+      discountLabel: v.discount_amount ? `${v.discount_type === 'percent' ? `${v.discount_value}%` : 'Discount'}${v.discount_note ? ` · ${v.discount_note}` : ''}` : '',
       what: (v.visit_procedures ?? [])
         .map((vp) => (Array.isArray(vp.procedures) ? vp.procedures[0]?.name : vp.procedures?.name))
         .filter((n): n is string => !!n)

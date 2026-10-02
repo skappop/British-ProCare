@@ -311,7 +311,7 @@ export function buildReportPdf(
     // ---- visits -----------------------------------------------------------------
     sectionTitle('Treatment history')
     table(
-      ['Date', 'Procedures', 'Notes'],
+      ['Date', 'Procedures', 'Visit note'],
       report.visits.length
         ? report.visits.map((v) => [fmtDate(v.date), v.procedures.join(', ') || '—', v.notes || ''])
         : [['—', 'No visits recorded yet', '']],

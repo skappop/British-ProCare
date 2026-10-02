@@ -22,12 +22,6 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 const LOG_CATEGORIES: LogCategory[] = ['restorative', 'endo', 'surgical', 'prosthetic']
 const LOG_LABELS: Record<LogCategory, string> = { restorative: 'Restorative log', endo: 'Endodontic log', surgical: 'Surgical log', prosthetic: 'Prosthetic log' }
-const LOG_DESCRIPTIONS: Record<LogCategory, string> = {
-  restorative: 'Record tooth surfaces, material, isolation and occlusion.',
-  endo: 'Record diagnosis, working length, irrigation and obturation.',
-  surgical: 'Record the site, procedure, anaesthesia, closure and instructions.',
-  prosthetic: 'Record preparation, impression, shade, laboratory and delivery details.',
-}
 type ClinicalLogs = Partial<Record<LogCategory | 'ortho', StructuredClinicalLog | Partial<QuickLogData>>>
 
 function groupByCategory(procedures: Procedure[]) {
@@ -193,7 +187,7 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
     const selected = new Set(d.procedures.filter((p) => d.selectedIds.includes(p.id)).map((p) => p.category))
     return LOG_CATEGORIES.filter((category) => selected.has(category))
   }, [d.procedures, d.selectedIds])
-  const showOrthoLog = d.canUseOrthoLog && d.procedures.some((p) => p.category === 'ortho' && d.selectedIds.includes(p.id))
+  const showOrthoLog = d.procedures.some((p) => p.category === 'ortho' && d.selectedIds.includes(p.id))
   useEffect(() => {
     setOpenLogs((previous) => {
       const next = { ...previous }
@@ -242,7 +236,11 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
 
       <div className="space-y-5">
         <div className="space-y-4">
-          {groupedProcedures.map(({ category, items }) => (
+          {groupedProcedures.map(({ category, items }) => {
+            const selectedCategory = items.some((p) => d.selectedIds.includes(p.id))
+            const logCategory = LOG_CATEGORIES.includes(category as LogCategory) ? category as LogCategory : null
+            const orthoSelected = category === 'ortho' && selectedCategory
+            return (
             <div key={category} className="space-y-1.5">
               <span className="text-[10px] uppercase tracking-wider text-ink/40 font-mono">
                 {CATEGORY_LABELS[category] || category}
@@ -263,8 +261,27 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
                   </button>
                 ))}
               </div>
+              {logCategory && selectedCategory && (
+                <div className="mt-3 overflow-hidden rounded-card border border-teal/25 bg-teal/[0.03]">
+                  <button type="button" onClick={() => setOpenLogs((current) => ({ ...current, [logCategory]: !current[logCategory] }))} aria-expanded={!!openLogs[logCategory]} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-teal/[0.06]">
+                    <span><span className="block text-sm font-medium text-teal-deep">{LOG_LABELS[logCategory]}</span><span className="mt-0.5 block text-xs text-ink/55">Clinical details for the selected {CATEGORY_LABELS[category].toLowerCase()} treatment.</span></span>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-teal-deep">{openLogs[logCategory] ? 'Hide' : 'Open'}{openLogs[logCategory] ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</span>
+                  </button>
+                  {openLogs[logCategory] && <div className="border-t border-teal/15"><StructuredTreatmentLog category={logCategory} initial={d.clinicalLogs[logCategory] as StructuredClinicalLog | undefined} onChange={(value) => d.setClinicalLog(logCategory, value)} /></div>}
+                </div>
+              )}
+              {orthoSelected && (
+                <div className="mt-3 overflow-hidden rounded-card border border-gold/30 bg-gold/[0.04]">
+                  <button type="button" onClick={() => setOpenLogs((current) => ({ ...current, ortho: !current.ortho }))} aria-expanded={!!openLogs.ortho} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-gold/[0.08]">
+                    <span><span className="block text-sm font-medium text-gold-deep">Orthodontic log</span><span className="mt-0.5 block text-xs text-ink/55">Clinical details for the selected orthodontic treatment.</span></span>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-gold-deep">{openLogs.ortho ? 'Hide' : 'Open'}{openLogs.ortho ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</span>
+                  </button>
+                  {openLogs.ortho && <div className="border-t border-gold/20"><OrthoQuickLog key={JSON.stringify(d.lastQuickLog)} initial={d.lastQuickLog} onChange={d.setQuickLogData} /></div>}
+                </div>
+              )}
             </div>
-          ))}
+            )
+          })}
           {groupedProcedures.length === 0 && <p className="text-xs text-ink/40">No active procedures yet.</p>}
         </div>
 
@@ -284,28 +301,8 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
           </div>
         )}
 
-        {showOrthoLog && (
-          <div className="overflow-hidden rounded-card border border-gold/30 bg-gold/[0.04]">
-            <button type="button" onClick={() => setOpenLogs((current) => ({ ...current, ortho: !current.ortho }))} aria-expanded={!!openLogs.ortho} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-gold/[0.08]">
-              <span><span className="block text-sm font-medium text-gold-deep">Orthodontic log</span><span className="mt-0.5 block text-xs text-ink/55">Record wires, mechanics, elastics and the next review in this visit.</span></span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-gold-deep">{openLogs.ortho ? 'Hide' : 'Open'}{openLogs.ortho ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</span>
-            </button>
-            {openLogs.ortho && <div className="border-t border-gold/20"><OrthoQuickLog key={JSON.stringify(d.lastQuickLog)} initial={d.lastQuickLog} onChange={d.setQuickLogData} /></div>}
-          </div>
-        )}
-
-        {LOG_CATEGORIES.filter((category) => d.procedures.some((p) => p.category === category && d.selectedIds.includes(p.id))).map((category) => (
-          <div key={category} className="overflow-hidden rounded-card border border-teal/25 bg-teal/[0.03]">
-            <button type="button" onClick={() => setOpenLogs((current) => ({ ...current, [category]: !current[category] }))} aria-expanded={!!openLogs[category]} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-teal/[0.06]">
-              <span><span className="block text-sm font-medium text-teal-deep">{LOG_LABELS[category]}</span><span className="mt-0.5 block text-xs text-ink/55">{LOG_DESCRIPTIONS[category]}</span></span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-teal-deep">{openLogs[category] ? 'Hide' : 'Open'}{openLogs[category] ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</span>
-            </button>
-            {openLogs[category] && <div className="border-t border-teal/15"><StructuredTreatmentLog category={category} initial={d.clinicalLogs[category] as StructuredClinicalLog | undefined} onChange={(value) => d.setClinicalLog(category, value)} /></div>}
-          </div>
-        ))}
-
         <div className="space-y-1">
-          <label htmlFor="visit-notes" className="text-sm text-ink/70">Notes</label>
+          <label htmlFor="visit-notes" className="space-y-0.5 text-sm text-ink/70"><span className="block">Today&apos;s visit note</span><span className="block text-xs text-ink/40">Short note about this visit; it appears in treatment history.</span></label>
           <input
             id="visit-notes"
             value={d.notes}
