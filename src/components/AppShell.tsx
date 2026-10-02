@@ -136,7 +136,9 @@ export default function AppShell({
       </aside>
 
       {/* Main */}
-      <main className="md:ml-64 p-4 sm:p-6 lg:p-10">{children}</main>
+      <main className="md:ml-64 min-h-screen p-4 pb-8 sm:p-6 sm:pb-10 lg:p-8 lg:pb-12 xl:p-10">
+        <div className="mx-auto w-full max-w-[1600px]">{children}</div>
+      </main>
     </div>
   )
 }

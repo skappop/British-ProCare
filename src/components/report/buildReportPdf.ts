@@ -343,39 +343,55 @@ export function buildReportPdf(
   }
 
   function drawDentalSnapshot() {
-    const chartH = 37
+    const chartH = 48
     ensure(chartH + 12)
-    const startX = M + 7
-    const gap = (contentW - 14) / 16
+    const chartY = y
+    const labelW = 15
+    const startX = M + labelW + 4
+    const gap = (contentW - labelW - 8) / 16
     const statusByTooth = new Map(report.findings.map((f) => [f.raw_fdi, f.status]))
     const fill: Record<string, RGB> = { watch: DANGER, planned: GOLD, treated: TEAL, missing: INK_SOFT, healthy: [255, 255, 255] }
-    const drawRow = (teeth: string[], y0: number) => {
+    const upper = ['18', '17', '16', '15', '14', '13', '12', '11', '21', '22', '23', '24', '25', '26', '27', '28']
+    const lower = ['48', '47', '46', '45', '44', '43', '42', '41', '31', '32', '33', '34', '35', '36', '37', '38']
+    doc.setFillColor(...MARBLE)
+    doc.setDrawColor(...BORDER)
+    doc.setLineWidth(0.2)
+    doc.roundedRect(M, chartY, contentW, chartH, 2, 2, 'FD')
+
+    const drawRow = (teeth: string[], y0: number, labelText: string) => {
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(7)
+      doc.setTextColor(...INK_SOFT)
+      doc.text(labelText, M + 4, y0 + 1.5)
       teeth.forEach((fdi, i) => {
         const x = startX + i * gap
         const status = statusByTooth.get(fdi) || 'healthy'
         doc.setFillColor(...(fill[status] || fill.healthy))
         doc.setDrawColor(...INK_SOFT)
         doc.setLineWidth(0.2)
-        doc.circle(x, y0, 3.2, 'FD')
+        doc.roundedRect(x - 3.4, y0 - 4.2, 6.8, 8.4, 1.2, 1.2, 'FD')
         doc.setFont('helvetica', 'normal')
-        doc.setFontSize(5.5)
+        doc.setFontSize(5.2)
         doc.setTextColor(...INK)
-        doc.text(String(i + 1), x, y0 + 1.8, { align: 'center' })
+        doc.text(fdi, x, y0 + 1.5, { align: 'center' })
       })
     }
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7)
-    doc.setTextColor(...INK_SOFT)
-    doc.text('Upper', M, y + 4)
-    drawRow(['11', '12', '13', '14', '15', '16', '17', '18', '21', '22', '23', '24', '25', '26', '27', '28'], y + 3)
-    doc.text('Lower', M, y + 22)
-    drawRow(['48', '47', '46', '45', '44', '43', '42', '41', '31', '32', '33', '34', '35', '36', '37', '38'], y + 21)
+    drawRow(upper, chartY + 12, 'UPPER')
+    drawRow(lower, chartY + 29, 'LOWER')
     y += chartH
+    const legend: [string, RGB][] = [['Problem', DANGER], ['Planned', GOLD], ['Treated', TEAL], ['Missing', INK_SOFT], ['Healthy', [255, 255, 255]]]
+    let lx = M + 4
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(7)
-    doc.setTextColor(...INK_SOFT)
-    doc.text('Red: problem  ·  gold: planned  ·  teal: treated  ·  grey: missing', M + 8, y + 2)
-    y += 8
+    doc.setFontSize(6.5)
+    legend.forEach(([name, color]) => {
+      doc.setFillColor(...color)
+      doc.setDrawColor(...INK_SOFT)
+      doc.rect(lx, y + 3, 3, 3, 'FD')
+      doc.setTextColor(...INK_SOFT)
+      doc.text(name, lx + 4.5, y + 5.4)
+      lx += 25
+    })
+    y += 10
   }
 
   // ---- images -----------------------------------------------------------------

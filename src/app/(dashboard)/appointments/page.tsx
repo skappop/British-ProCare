@@ -134,7 +134,7 @@ export default async function AppointmentsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <p className="text-xs tracking-[0.25em] uppercase text-gold-deep font-mono">Schedule</p>
           <div className="flex items-center gap-3 mt-1">
@@ -142,26 +142,27 @@ export default async function AppointmentsPage({
             <LiveRefresh tables={['appointments', 'visits', 'payments']} />
           </div>
         </div>
-        <ClinicSwitcher clinics={clinics} />
-        <div className="hidden" />
-        <div className="flex rounded-control border border-ink/15 overflow-hidden">
-          <Link
-            href={`/appointments?view=day&date=${dateParam || todayStr}`}
-            className={`px-3 py-1.5 text-xs ${view === 'day' ? 'bg-teal text-white' : 'bg-white text-ink/60 hover:bg-marble/60'}`}
-          >
-            Day tracker
-          </Link>
-          <Link
-            href={`/appointments?view=week&date=${dateParam || todayStr}`}
-            className={`px-3 py-1.5 text-xs ${view === 'week' ? 'bg-teal text-white' : 'bg-white text-ink/60 hover:bg-marble/60'}`}
-          >
-            Week
-          </Link>
+        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+          <ClinicSwitcher clinics={clinics} />
+          <div className="flex overflow-hidden rounded-control border border-ink/15">
+            <Link
+              href={`/appointments?view=day&date=${dateParam || todayStr}`}
+              className={`px-3 py-1.5 text-xs ${view === 'day' ? 'bg-teal text-white' : 'bg-white text-ink/60 hover:bg-marble/60'}`}
+            >
+              Day tracker
+            </Link>
+            <Link
+              href={`/appointments?view=week&date=${dateParam || todayStr}`}
+              className={`px-3 py-1.5 text-xs ${view === 'week' ? 'bg-teal text-white' : 'bg-white text-ink/60 hover:bg-marble/60'}`}
+            >
+              Week
+            </Link>
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             href={`/appointments?view=${view}&date=${prevDate}`}
             className="px-3 py-1.5 rounded-control border border-ink/15 text-xs text-ink/60 hover:bg-marble/60"

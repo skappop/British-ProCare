@@ -130,15 +130,23 @@ export default function PatientReportButton({
       const blob = doc.output('blob')
       const filename = `Report - ${report.patient.full_name.replace(/[^\w\s-]/g, '').trim() || 'patient'}.pdf`
       const file = new File([blob], filename, { type: 'application/pdf' })
+      const firstName = report.patient.full_name.trim().split(/\s+/)[0] || report.patient.full_name
+      const message = `Hello ${firstName}, this is British ProCare Dental Clinics. Your patient report is ready. Please find the PDF attached. If you have any questions, reply here and our team will help you.`
       if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
-        await navigator.share({ files: [file], text: `British ProCare patient report for ${report.patient.full_name}` })
+        // On phones and supported browsers this opens the native share sheet
+        // with the PDF already attached, which removes the Downloads step.
+        await navigator.share({ files: [file], text: message })
         setOutcome({ ok: true, text: 'Report ready to share' })
       } else {
         doc.save(filename)
         const number = (report.patient.phone || '').replace(/\D/g, '').replace(/^0/, '20')
-        const url = number ? `https://wa.me/${number}?text=${encodeURIComponent(`Hello, this is British ProCare Dental Clinics. I have prepared your patient report. The PDF has been downloaded here so it can be attached to this chat.`)}` : `https://web.whatsapp.com/`
+        // Desktop WhatsApp cannot receive a local browser File through a
+        // wa.me link. Put the finished message on the clipboard so staff only
+        // need to attach the already-downloaded PDF and press send.
+        try { await navigator.clipboard.writeText(message) } catch { /* clipboard may be blocked */ }
+        const url = number ? `https://wa.me/${number}?text=${encodeURIComponent(message)}` : `https://web.whatsapp.com/`
         window.open(url, '_blank', 'noopener,noreferrer')
-        setOutcome({ ok: true, text: number ? 'PDF downloaded and WhatsApp opened' : 'PDF downloaded; open WhatsApp to attach it' })
+        setOutcome({ ok: true, text: number ? 'PDF downloaded, message copied, and WhatsApp opened' : 'PDF downloaded and message copied' })
       }
     } catch (e) {
       if ((e as Error)?.name !== 'AbortError') setOutcome({ ok: false, text: 'WhatsApp sharing was not completed' })
