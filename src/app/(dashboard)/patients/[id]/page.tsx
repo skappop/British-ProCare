@@ -47,7 +47,10 @@ export default async function PatientProfilePage({
   const patientRow = firstPatient.error
     ? (await supabase
         .from('patients')
-        .select('id, full_name, phone, email, file_number, date_of_birth, gender, is_ortho, medical_history, odontogram, notes, status, consent_signed_at, created_at, updated_at')
+        // Keep the profile usable when the database is one migration behind.
+        // The newer column list above can fail as a whole if one optional
+        // field has not been added yet; select the existing row instead.
+        .select('*')
         .eq('id', id)
         .single()).data
     : firstPatient.data
