@@ -1,6 +1,6 @@
 'use server'
 
-import { findingLabel, palmer, type OdontogramData } from '@/components/dental/charting'
+import { findingLabel, palmer, palmerLong, type OdontogramData } from '@/components/dental/charting'
 import { createClient } from '@/lib/supabase/server'
 
 export type ReportVisit = {
@@ -133,7 +133,7 @@ export async function getPatientReportData(patientId: string): Promise<PatientRe
   const findings: ReportFinding[] = Object.entries(odo)
     .filter(([, v]) => v && v.status && (v.status !== 'healthy' || v.note))
     .map(([fdi, v]) => ({
-      fdi: `${fdi} (${palmer(fdi)})`,
+      fdi: palmerLong(fdi),
       status: v.status,
       // What was charted, e.g. "Caries Class II (MO), Root canal treated".
       note: [v.findings?.length ? v.findings.map(findingLabel).join(', ') : '', v.note ?? '']

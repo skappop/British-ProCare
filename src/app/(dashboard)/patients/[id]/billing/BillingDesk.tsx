@@ -235,20 +235,6 @@ export default function BillingDesk({
                   </button>
                 </span>
               ) : h.kind === 'visit' ? (
-<<<<<<< HEAD
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditing(h.id)
-                    setPrice(String(h.amount || ''))
-                  }}
-                  title="Change the price (discount or correction)"
-                  className={`group inline-flex items-center gap-1.5 font-mono text-sm ${h.priced ? 'text-ink-strong' : 'font-sans text-gold-deep'}`}
-                >
-                  {h.priced ? (h.amount === 0 ? 'No charge' : egp(h.amount)) : 'Price not set'}
-                  <Pencil size={12} className="text-ink/25 group-hover:text-teal-deep" />
-                </button>
-=======
                 <span className="flex items-center gap-2">
                   <button
                     type="button"
@@ -279,7 +265,6 @@ export default function BillingDesk({
                     <Pencil size={14} />
                   </Link>
                 </span>
->>>>>>> e510a64 (Add ability to edit past visits and print visit invoices)
               ) : (
                 <span className="flex items-center gap-2">
                   <span className="font-mono text-sm text-success">− {egp(h.amount)}</span>

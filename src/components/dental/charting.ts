@@ -143,6 +143,21 @@ export function palmer(fdi: string): string {
   return `${QUAD_NAME[fdi[0]]}${isPrimary(fdi) ? PRIMARY_LETTER[pos - 1] : pos}`
 }
 
+/** Human-readable tooth notation: "upper left 6" instead of "UL6", for external reports. */
+export function palmerLong(fdi: string): string {
+  const quad = fdi[0]
+  const pos = Number(fdi[1])
+  const letter = isPrimary(fdi) ? PRIMARY_LETTER[pos - 1] : String(pos)
+
+  const location =
+    quad === '1' || quad === '5' ? 'upper right' :
+    quad === '2' || quad === '6' ? 'upper left' :
+    quad === '3' || quad === '7' ? 'lower left' :
+    'lower right'
+
+  return `${location} ${letter}`
+}
+
 function toothFrom(token: string): string | null {
   const t = token.toLowerCase()
   if (/^[1-8][1-8]$/.test(t)) return isValidFdi(t) ? t : null
