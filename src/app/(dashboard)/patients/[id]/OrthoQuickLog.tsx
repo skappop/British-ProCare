@@ -4,9 +4,12 @@ import { useState } from 'react'
 
 const WIRE_MATERIALS = ['NiTi', 'SS', 'TMA']
 const WIRE_DIMENSIONS = ['014', '016', '018', '16x22', '17x25', '19x25']
-const MECHANICS = ['Power Chain', 'Open Coil', 'Closed Coil', 'Laceback']
+const MECHANICS = ['Power Chain', 'Open Coil', 'Closed Coil', 'Laceback', 'Cinch back']
 const ELASTIC_CONFIGS = ['Class II R', 'Class II L', 'Class III R', 'Class III L', 'Box', 'Triangle', 'Midline']
 const ELASTIC_SIZES = ['3/16', '1/4', '5/16', '3/8']
+const BEL_SIZES = ['8x1.6', '8x12', '10x1.6', '10x12']
+const TADS_LOCATIONS = ['Infrazygomatic', 'Interradicular', 'Palatal']
+const PIGGYBACK_POSITIONS = ['Upper R', 'Upper L', 'Lower R', 'Lower L']
 const NEXT_VISIT_OPTIONS = [2, 3, 4, 6]
 
 type WireArch = { material: string; dimension: string } | null
@@ -16,6 +19,9 @@ export type QuickLogData = {
   lower_wire: WireArch
   mechanics: string[]
   elastics: { config: string; size: string } | null
+  bel_size: string | null
+  tads: string | null
+  piggyback: string | null
   next_visit_weeks: number | null
 }
 
@@ -102,6 +108,9 @@ export default function OrthoQuickLog({
   const [mechanics, setMechanics] = useState<string[]>(initial?.mechanics ?? [])
   const [elasticConfig, setElasticConfig] = useState<string | null>(initial?.elastics?.config ?? null)
   const [elasticSize, setElasticSize] = useState<string | null>(initial?.elastics?.size ?? null)
+  const [belSize, setBelSize] = useState<string | null>(initial?.bel_size ?? null)
+  const [tads, setTads] = useState<string | null>(initial?.tads ?? null)
+  const [piggyback, setPiggyback] = useState<string | null>(initial?.piggyback ?? null)
   const [nextVisit, setNextVisit] = useState<number | null>(initial?.next_visit_weeks ?? 4)
 
   function toggleMechanic(m: string) {
@@ -119,6 +128,9 @@ export default function OrthoQuickLog({
         (patch.elastics !== undefined ? patch.elastics : elasticConfig && elasticSize
           ? { config: elasticConfig, size: elasticSize }
           : null),
+      bel_size: patch.bel_size !== undefined ? patch.bel_size : belSize,
+      tads: patch.tads !== undefined ? patch.tads : tads,
+      piggyback: patch.piggyback !== undefined ? patch.piggyback : piggyback,
       next_visit_weeks: patch.next_visit_weeks !== undefined ? patch.next_visit_weeks : nextVisit,
     }
     onChange(data)
@@ -180,6 +192,60 @@ export default function OrthoQuickLog({
                 const next = elasticSize === s ? null : s
                 setElasticSize(next)
                 emit({ elastics: elasticConfig && next ? { config: elasticConfig, size: next } : null })
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <span className="text-sm text-ink/70">Bel Size</span>
+        <div className="flex flex-wrap gap-1.5">
+          {BEL_SIZES.map((s) => (
+            <Chip
+              key={s}
+              label={s}
+              active={belSize === s}
+              onClick={() => {
+                const next = belSize === s ? null : s
+                setBelSize(next)
+                emit({ bel_size: next })
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <span className="text-sm text-ink/70">TADS</span>
+        <div className="flex flex-wrap gap-1.5">
+          {TADS_LOCATIONS.map((loc) => (
+            <Chip
+              key={loc}
+              label={loc}
+              active={tads === loc}
+              onClick={() => {
+                const next = tads === loc ? null : loc
+                setTads(next)
+                emit({ tads: next })
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <span className="text-sm text-ink/70">Piggyback</span>
+        <div className="flex flex-wrap gap-1.5">
+          {PIGGYBACK_POSITIONS.map((pos) => (
+            <Chip
+              key={pos}
+              label={pos}
+              active={piggyback === pos}
+              onClick={() => {
+                const next = piggyback === pos ? null : pos
+                setPiggyback(next)
+                emit({ piggyback: next })
               }}
             />
           ))}
