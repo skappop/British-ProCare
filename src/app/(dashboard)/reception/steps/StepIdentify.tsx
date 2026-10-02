@@ -32,7 +32,6 @@ export default function StepIdentify({
   const [fileNumber, setFileNumber] = useState('')
   const [dob, setDob] = useState('')
   const [gender, setGender] = useState('')
-  const [isOrtho, setIsOrtho] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -76,7 +75,6 @@ export default function StepIdentify({
         file_number: fileNumber,
         date_of_birth: dob,
         gender,
-        is_ortho: isOrtho,
       })
       if (res.ok && res.patient) {
         onPick(res.patient, null)
@@ -268,11 +266,6 @@ export default function StepIdentify({
               </select>
             </Field>
           </div>
-
-          <label className="flex items-center gap-2 text-sm text-ink/70">
-            <input type="checkbox" checked={isOrtho} onChange={(e) => setIsOrtho(e.target.checked)} className="rounded" />
-            This patient is an orthodontic case
-          </label>
 
           <div className="flex items-center justify-between pt-2">
             <GhostButton onClick={() => setMode('search')}>← Back to search</GhostButton>

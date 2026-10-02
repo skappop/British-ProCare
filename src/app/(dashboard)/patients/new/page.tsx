@@ -1,4 +1,5 @@
 import { createPatient } from '../actions'
+import { getCurrentUserRole } from '@/lib/auth/role'
 
 export default async function NewPatientPage({
   searchParams,
@@ -6,6 +7,7 @@ export default async function NewPatientPage({
   searchParams: Promise<{ error?: string }>
 }) {
   const { error } = await searchParams
+  const role = await getCurrentUserRole()
 
   return (
     <div className="max-w-lg">
@@ -66,10 +68,12 @@ export default async function NewPatientPage({
           </div>
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-ink/70">
-          <input type="checkbox" name="is_ortho" className="rounded" />
-          This patient is an orthodontic case
-        </label>
+        {role !== 'assistant' && (
+          <label className="flex items-center gap-2 text-sm text-ink/70">
+            <input type="checkbox" name="is_ortho" className="rounded" />
+            This patient is an orthodontic case
+          </label>
+        )}
 
         <button
           type="submit"

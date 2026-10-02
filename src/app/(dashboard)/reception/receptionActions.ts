@@ -34,7 +34,6 @@ export async function quickCreatePatient(payload: {
   file_number?: string
   date_of_birth?: string
   gender?: string
-  is_ortho?: boolean
 }): Promise<{ ok: boolean; message?: string; patient?: ReceptionPatient }> {
   const supabase = await createClient()
 
@@ -49,7 +48,7 @@ export async function quickCreatePatient(payload: {
       file_number: payload.file_number?.trim() || null,
       date_of_birth: payload.date_of_birth || null,
       gender: payload.gender || null,
-      is_ortho: !!payload.is_ortho,
+      is_ortho: false,
     })
     .select('id, full_name, phone, file_number, is_ortho')
     .single()

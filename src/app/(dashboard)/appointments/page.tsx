@@ -3,6 +3,7 @@ import Link from 'next/link'
 import BookingForm from './BookingForm'
 import AppointmentList from './AppointmentList'
 import DayBoard, { type BoardAppointment } from './DayBoard'
+import DayTimeline from './DayTimeline'
 import ClinicSwitcher from '@/components/ClinicSwitcher'
 import LiveRefresh from '@/components/LiveRefresh'
 import { getClinics } from '@/lib/clinics'
@@ -49,11 +50,13 @@ export default async function AppointmentsPage({
 
   const BASE_COLUMNS =
     'id, scheduled_at, duration_minutes, status, notes, arrived_at, seated_at, doctor_id, doctors(full_name, title), patients(id, full_name, phone, is_ortho)'
+  const LEGACY_COLUMNS =
+    'id, scheduled_at, duration_minutes, status, notes, arrived_at, seated_at, patients(id, full_name, phone, is_ortho)'
 
-  async function fetchAppointments(withClinic: boolean) {
+  async function fetchAppointments(withClinic: boolean, withDoctor = true) {
     const query = supabase
       .from('appointments')
-      .select(withClinic ? `${BASE_COLUMNS}, clinic_id` : BASE_COLUMNS)
+      .select(withClinic ? `${withDoctor ? BASE_COLUMNS : LEGACY_COLUMNS}, clinic_id` : withDoctor ? BASE_COLUMNS : LEGACY_COLUMNS)
       .gte('scheduled_at', rangeStart.toISOString())
       .lt('scheduled_at', rangeEnd.toISOString())
 
@@ -64,7 +67,7 @@ export default async function AppointmentsPage({
   // would fail the whole query and blank the board. Fall back to the un-tagged
   // shape rather than showing an empty day.
   const first = await fetchAppointments(clinics.length > 0)
-  const appointments = first.error ? (await fetchAppointments(false)).data : first.data
+  const appointments = first.error ? (await fetchAppointments(clinics.length > 0, false)).data : first.data
 
   const list = (appointments as any[]) || []
   const dayAppts: BoardAppointment[] = list.map((a) => ({
@@ -202,7 +205,10 @@ export default async function AppointmentsPage({
               {isToday ? 'No one booked today yet.' : 'No appointments on this day.'}
             </div>
           ) : (
-            <DayBoard appointments={dayAppts} clinics={clinics} canTakePayment={canTakePayment} />
+            <div className="space-y-4">
+              <DayTimeline appointments={dayAppts} />
+              <DayBoard appointments={dayAppts} clinics={clinics} canTakePayment={canTakePayment} />
+            </div>
           )}
 
           {/* Booking */}

@@ -50,6 +50,17 @@ export default function ReceptionFlow({
   const visibleSteps = alreadyRouted ? STEPS.filter((s) => s.key !== 'send') : STEPS
   const currentIndex = visibleSteps.findIndex((s) => s.key === step)
 
+  function goToStep(target: StepKey, index: number) {
+    if (index > currentIndex) return
+    // Re-opening Send should show the editable hand-off form, not the success
+    // screen, so a receptionist can correct a clinic, note or doctor choice.
+    if (target === 'send') {
+      setSentTo(null)
+      setBookedFor(null)
+    }
+    setStep(target)
+  }
+
   function reset() {
     setPatient(null)
     setAppointmentId(null)
@@ -100,28 +111,31 @@ export default function ReceptionFlow({
         {visibleSteps.map((s, i) => {
           const done = i < currentIndex
           const active = i === currentIndex
+          const clickable = i <= currentIndex
           return (
             <li key={s.key} className="flex-1">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-mono transition-colors ${
-                    active
-                      ? 'bg-teal text-white'
-                      : done
-                        ? 'bg-gold-deep text-white'
-                        : 'bg-ink/10 text-ink/40'
-                  }`}
-                >
-                  {done ? <Check size={13} /> : i + 1}
-                </span>
-                <span
-                  className={`hidden sm:block text-xs transition-colors ${
-                    active ? 'text-ink-strong font-medium' : done ? 'text-ink/60' : 'text-ink/35'
-                  }`}
-                >
-                  {s.label}
-                </span>
-              </div>
+              <button type="button" disabled={!clickable} onClick={() => goToStep(s.key, i)} className={`w-full text-left ${clickable ? 'cursor-pointer' : 'cursor-default'}`}>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-mono transition-colors ${
+                      active
+                        ? 'bg-teal text-white'
+                        : done
+                          ? 'bg-gold-deep text-white'
+                          : 'bg-ink/10 text-ink/40'
+                    }`}
+                  >
+                    {done ? <Check size={13} /> : i + 1}
+                  </span>
+                  <span
+                    className={`hidden sm:block text-xs transition-colors ${
+                      active ? 'text-ink-strong font-medium' : done ? 'text-ink/60' : 'text-ink/35'
+                    }`}
+                  >
+                    {s.label}
+                  </span>
+                </div>
+              </button>
               {i < visibleSteps.length - 1 && (
                 <div className={`h-px mt-2 mr-1 ${done ? 'bg-gold-deep/40' : 'bg-ink/10'}`} />
               )}

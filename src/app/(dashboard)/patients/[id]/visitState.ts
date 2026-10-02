@@ -29,7 +29,7 @@ export async function getVisitState(patientId: string): Promise<{
   const supabase = await createClient()
   const now = Date.now()
 
-  const { data } = await supabase
+  const first = await supabase
     .from('appointments')
     .select('id, status, scheduled_at, arrived_at, seated_at, notes, duration_minutes, clinic_id, doctor_id, doctors(full_name, title), clinics(name)')
     .eq('patient_id', patientId)
@@ -37,6 +37,16 @@ export async function getVisitState(patientId: string): Promise<{
     .gte('scheduled_at', new Date(now - 18 * 3600_000).toISOString())
     .order('scheduled_at', { ascending: true })
     .limit(10)
+  const data = first.error
+    ? (await supabase
+        .from('appointments')
+        .select('id, status, scheduled_at, arrived_at, seated_at, notes, duration_minutes, clinic_id, clinics(name)')
+        .eq('patient_id', patientId)
+        .in('status', ['scheduled', 'arrived', 'in_chair', 'completed'])
+        .gte('scheduled_at', new Date(now - 18 * 3600_000).toISOString())
+        .order('scheduled_at', { ascending: true })
+        .limit(10)).data
+    : first.data
 
   const appts = ((data ?? []) as unknown as ApptRow[]).map((a) => ({
     ...a,

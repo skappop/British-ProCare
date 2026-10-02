@@ -263,7 +263,7 @@ function Card({
 function StartVisit({ patientId }: { patientId: string }) {
   return (
     <Link
-      href={`/patients/${patientId}?start=1`}
+      href={`/patients/${encodeURIComponent(patientId)}`}
       className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-control bg-teal text-white hover:bg-teal-deep transition-colors"
     >
       <Stethoscope size={12} /> Start visit

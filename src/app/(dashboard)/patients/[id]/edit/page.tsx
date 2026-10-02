@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import { updatePatient, deletePatient } from '../../actions'
 import DeleteButton from '@/components/DeleteButton'
+import { getCurrentUserRole } from '@/lib/auth/role'
 
 export default async function EditPatientPage({
   params,
@@ -12,6 +13,7 @@ export default async function EditPatientPage({
 }) {
   const { id } = await params
   const { error } = await searchParams
+  const role = await getCurrentUserRole()
   const supabase = await createClient()
 
   const { data: p } = await supabase.from('patients').select('*').eq('id', id).single()
@@ -71,10 +73,12 @@ export default async function EditPatientPage({
             className="w-full rounded-control border border-ink/15 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-ink/70">
-          <input type="checkbox" name="is_ortho" defaultChecked={p.is_ortho} className="rounded" />
-          This patient is an orthodontic case
-        </label>
+        {role !== 'assistant' && (
+          <label className="flex items-center gap-2 text-sm text-ink/70">
+            <input type="checkbox" name="is_ortho" defaultChecked={p.is_ortho} className="rounded" />
+            This patient is an orthodontic case
+          </label>
+        )}
 
         <button type="submit"
           className="w-full bg-teal hover:bg-teal-deep text-white rounded-control py-2.5 text-sm font-medium transition-colors">

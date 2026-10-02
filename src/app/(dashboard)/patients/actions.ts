@@ -3,18 +3,21 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { getCurrentUserRole } from '@/lib/auth/role'
 
 export async function createPatient(formData: FormData) {
   const supabase = await createClient()
+  const role = await getCurrentUserRole()
 
-  const { data, error } = await supabase.from('patients').insert({
+  const patient = {
     full_name: formData.get('full_name') as string,
     phone: formData.get('phone') as string || null,
     file_number: formData.get('file_number') as string || null,
     date_of_birth: formData.get('date_of_birth') as string || null,
     gender: formData.get('gender') as string || null,
-    is_ortho: formData.get('is_ortho') === 'on',
-  }).select().single()
+    is_ortho: role === 'assistant' ? false : formData.get('is_ortho') === 'on',
+  }
+  const { data, error } = await supabase.from('patients').insert(patient).select().single()
 
   if (error) {
     redirect('/patients/new?error=' + encodeURIComponent(error.message))
@@ -40,17 +43,20 @@ export async function searchPatients(query: string) {
 
 export async function updatePatient(id: string, formData: FormData) {
   const supabase = await createClient()
+  const role = await getCurrentUserRole()
 
-  const { error } = await supabase.from('patients').update({
+  const updates: Record<string, unknown> = {
     full_name: formData.get('full_name') as string,
     phone: formData.get('phone') as string || null,
     file_number: formData.get('file_number') as string || null,
     date_of_birth: formData.get('date_of_birth') as string || null,
     gender: formData.get('gender') as string || null,
-    is_ortho: formData.get('is_ortho') === 'on',
     notes: formData.get('notes') as string || null,
     updated_at: new Date().toISOString(),
-  }).eq('id', id)
+  }
+  if (role !== 'assistant') updates.is_ortho = formData.get('is_ortho') === 'on'
+
+  const { error } = await supabase.from('patients').update(updates).eq('id', id)
 
   if (error) {
     redirect(`/patients/${id}/edit?error=` + encodeURIComponent(error.message))

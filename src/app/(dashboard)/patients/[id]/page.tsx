@@ -43,7 +43,14 @@ export default async function PatientProfilePage({
   const patientColumns = role === 'assistant'
     ? 'id, full_name, phone, email, file_number, date_of_birth, gender, is_ortho, medical_history, odontogram, notes, status, consent_signed_at, created_at, updated_at, report_notes'
     : 'id, full_name, phone, email, file_number, date_of_birth, gender, is_ortho, medical_history, odontogram, notes, status, consent_signed_at, created_at, updated_at, report_notes, private_notes'
-  const { data: patientRow } = await supabase.from('patients').select(patientColumns).eq('id', id).single()
+  const firstPatient = await supabase.from('patients').select(patientColumns).eq('id', id).single()
+  const patientRow = firstPatient.error
+    ? (await supabase
+        .from('patients')
+        .select('id, full_name, phone, email, file_number, date_of_birth, gender, is_ortho, medical_history, odontogram, notes, status, consent_signed_at, created_at, updated_at')
+        .eq('id', id)
+        .single()).data
+    : firstPatient.data
   const patient = patientRow as any
   if (!patient) notFound()
 
