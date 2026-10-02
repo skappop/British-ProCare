@@ -7,10 +7,8 @@ import {
   logVisit,
   getBomPreview,
   getLastVisitSetup,
-  getLastQuickLog,
 } from '../../patients/[id]/actions'
 import { saveTeeth } from '../../patients/[id]/odontogramActions'
-import OrthoQuickLog, { type QuickLogData } from '../../patients/[id]/OrthoQuickLog'
 import { getLatestVisit, getOdontogram } from '../receptionActions'
 import DentalChart, { type OdontogramData } from '@/components/dental/DentalChart'
 import { StepCard, PrimaryButton, SectionLabel, Field, inputClass, inputMonoClass } from '../ui'
@@ -56,8 +54,6 @@ export default function StepVisit({
   const [feeTouched, setFeeTouched] = useState(false)
   const [notes, setNotes] = useState('')
   const [bomPreview, setBomPreview] = useState<BomLine[]>([])
-  const [lastQuickLog, setLastQuickLog] = useState<Partial<QuickLogData> | null>(null)
-  const [quickLogData, setQuickLogData] = useState<QuickLogData | null>(null)
   const [hasLastVisit, setHasLastVisit] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -75,9 +71,8 @@ export default function StepVisit({
   const grouped = useMemo(() => groupByCategory(procedures), [procedures])
 
   useEffect(() => {
-    if (patient.is_ortho) getLastQuickLog(patient.id).then(setLastQuickLog)
     getLastVisitSetup(patient.id).then((s) => setHasLastVisit(!!s && s.procedureIds.length > 0))
-  }, [patient.id, patient.is_ortho])
+  }, [patient.id])
 
   const autoFee = useMemo(
     () =>
@@ -111,7 +106,6 @@ export default function StepVisit({
         setFee(String(setup.fee))
         setFeeTouched(true)
       }
-      if (setup.quickLog) setLastQuickLog(setup.quickLog)
     })
   }
 
@@ -127,7 +121,6 @@ export default function StepVisit({
     selectedIds.forEach((id) => fd.append('procedure_ids', id))
     fd.set('notes', notes)
     fd.set('fee', fee)
-    if (quickLogData) fd.set('quick_log', JSON.stringify(quickLogData))
 
     startTransition(async () => {
       const res = await logVisit(fd)
@@ -146,7 +139,7 @@ export default function StepVisit({
           fee: latest?.fee_charged ?? (fee ? parseFloat(fee) : null),
           procedures: procedureNames,
         },
-        quickLogData?.next_visit_weeks ?? null
+        null
       )
     })
   }
@@ -250,13 +243,6 @@ export default function StepVisit({
             </div>
           )}
         </div>
-
-        {patient.is_ortho && (
-          <div className="space-y-2">
-            <SectionLabel>Ortho quick-log</SectionLabel>
-            <OrthoQuickLog key={JSON.stringify(lastQuickLog)} initial={lastQuickLog} onChange={setQuickLogData} />
-          </div>
-        )}
 
         <div className="flex gap-4 items-end">
           <div className="flex-1">
