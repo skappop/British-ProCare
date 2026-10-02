@@ -12,6 +12,7 @@ export async function logVisit(formData: FormData) {
   const notes = formData.get('notes') as string
   const fee = formData.get('fee') as string
   const quickLogRaw = formData.get('quick_log') as string
+  const clinicalLogsRaw = formData.get('clinical_logs') as string
 
   if (procedureIds.length === 0) {
     return { ok: false, message: 'Select at least one procedure' }
@@ -23,6 +24,15 @@ export async function logVisit(formData: FormData) {
       quickLog = JSON.parse(quickLogRaw)
     } catch {
       quickLog = null
+    }
+  }
+
+  let clinicalLogs = null
+  if (clinicalLogsRaw) {
+    try {
+      clinicalLogs = JSON.parse(clinicalLogsRaw)
+    } catch {
+      clinicalLogs = null
     }
   }
 
@@ -67,6 +77,7 @@ export async function logVisit(formData: FormData) {
       ...(finished.clinicId ? { clinic_id: finished.clinicId } : {}),
       report_notes: notes || null,
       ...(quickLog ? { ortho_log: quickLog } : {}),
+      ...(clinicalLogs ? { clinical_logs: clinicalLogs } : {}),
     }).eq('id', visitId)
   }
 
@@ -202,6 +213,34 @@ export async function getLastQuickLog(patientId: string) {
   return legacy.data?.ortho_quick_log || null
 }
 
+export async function getLastClinicalLogs(patientId: string): Promise<{ logs: Record<string, unknown>; ortho: Record<string, unknown> | null }> {
+  const supabase = await createClient()
+  const current = await supabase
+    .from('visits')
+    .select('clinical_logs, ortho_log, ortho_quick_log')
+    .eq('patient_id', patientId)
+    .order('visit_date', { ascending: false })
+    .limit(20)
+
+  if (!current.error && current.data) {
+    const withLogs = current.data.find((visit) => visit.clinical_logs && Object.keys(visit.clinical_logs as object).length > 0)
+    const withOrtho = current.data.find((visit) => visit.ortho_log || visit.ortho_quick_log)
+    return {
+      logs: (withLogs?.clinical_logs as Record<string, unknown> | null) || {},
+      ortho: (withOrtho?.ortho_log || withOrtho?.ortho_quick_log || null) as Record<string, unknown> | null,
+    }
+  }
+
+  const legacy = await supabase
+    .from('visits')
+    .select('ortho_log, ortho_quick_log')
+    .eq('patient_id', patientId)
+    .order('visit_date', { ascending: false })
+    .limit(20)
+  const withOrtho = legacy.data?.find((visit) => visit.ortho_log || visit.ortho_quick_log)
+  return { logs: {}, ortho: (withOrtho?.ortho_log || withOrtho?.ortho_quick_log || null) as Record<string, unknown> | null }
+}
+
 export async function getBomPreview(procedureIds: string[]) {
   const supabase = await createClient()
   if (procedureIds.length === 0) return []
@@ -224,19 +263,44 @@ export async function getBomPreview(procedureIds: string[]) {
 export async function getLastVisitSetup(patientId: string) {
   const supabase = await createClient()
 
-  const { data: lastVisit } = await supabase
+  type LastVisitRow = {
+    id: string
+    fee_charged: number | null
+    ortho_log?: Record<string, unknown> | null
+    ortho_quick_log?: Record<string, unknown> | null
+    clinical_logs?: Record<string, unknown> | null
+    visit_procedures: { procedure_id: string }[] | null
+  }
+  const first = await supabase
     .from('visits')
-    .select('id, fee_charged, ortho_log, ortho_quick_log, visit_procedures(procedure_id)')
+    .select('id, fee_charged, ortho_log, ortho_quick_log, clinical_logs, visit_procedures(procedure_id)')
     .eq('patient_id', patientId)
     .order('visit_date', { ascending: false })
     .limit(1)
     .single()
+  let lastVisit = first.data as LastVisitRow | null
+  let error = first.error
 
-  if (!lastVisit) return null
+  // Keep the existing repeat-visit button working while an older database is
+  // waiting for migration 21.
+  if (error) {
+    const legacy = await supabase
+      .from('visits')
+      .select('id, fee_charged, ortho_log, ortho_quick_log, visit_procedures(procedure_id)')
+      .eq('patient_id', patientId)
+      .order('visit_date', { ascending: false })
+      .limit(1)
+      .single()
+    lastVisit = legacy.data as LastVisitRow | null
+    error = legacy.error
+  }
+
+  if (error || !lastVisit) return null
   return {
     procedureIds: (lastVisit.visit_procedures as any[])?.map((vp) => vp.procedure_id) || [],
     fee: lastVisit.fee_charged,
     quickLog: lastVisit.ortho_log || lastVisit.ortho_quick_log,
+    clinicalLogs: lastVisit.clinical_logs,
   }
 }
 

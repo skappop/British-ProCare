@@ -4,8 +4,9 @@ import { createContext, useContext, useEffect, useMemo, useState, useTransition 
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react'
 import { useStoredValue } from '@/lib/useStoredValue'
-import { logVisit, getLastQuickLog, getBomPreview, getLastVisitSetup } from './actions'
+import { logVisit, getLastClinicalLogs, getBomPreview, getLastVisitSetup } from './actions'
 import OrthoQuickLog, { QuickLogData } from './OrthoQuickLog'
+import StructuredTreatmentLog, { type LogCategory, type StructuredClinicalLog } from './TreatmentLogs'
 
 type Procedure = { id: string; code: string; name: string; base_fee: number | null; category: string }
 type BomLine = { name: string; unit: string; stock: number; qty: number }
@@ -19,6 +20,15 @@ const CATEGORY_LABELS: Record<string, string> = {
   prosthetic: 'Prosthetic',
   ortho: 'Ortho',
 }
+const LOG_CATEGORIES: LogCategory[] = ['restorative', 'endo', 'surgical', 'prosthetic']
+const LOG_LABELS: Record<LogCategory, string> = { restorative: 'Restorative log', endo: 'Endodontic log', surgical: 'Surgical log', prosthetic: 'Prosthetic log' }
+const LOG_DESCRIPTIONS: Record<LogCategory, string> = {
+  restorative: 'Record tooth surfaces, material, isolation and occlusion.',
+  endo: 'Record diagnosis, working length, irrigation and obturation.',
+  surgical: 'Record the site, procedure, anaesthesia, closure and instructions.',
+  prosthetic: 'Record preparation, impression, shade, laboratory and delivery details.',
+}
+type ClinicalLogs = Partial<Record<LogCategory | 'ortho', StructuredClinicalLog | Partial<QuickLogData>>>
 
 function groupByCategory(procedures: Procedure[]) {
   const groups: Record<string, Procedure[]> = {}
@@ -53,6 +63,9 @@ type Draft = {
   lastQuickLog: Partial<QuickLogData> | null
   setLastQuickLog: (v: Partial<QuickLogData> | null) => void
   setQuickLogData: (v: QuickLogData | null) => void
+  clinicalLogs: ClinicalLogs
+  setClinicalLog: (category: LogCategory, value: StructuredClinicalLog) => void
+  setClinicalLogs: (value: ClinicalLogs) => void
   bomPreview: BomLine[]
   stockProblem: boolean
   isPending: boolean
@@ -93,16 +106,17 @@ export function VisitDraft({
   const [notes, setNotes] = useState('')
   const [lastQuickLog, setLastQuickLog] = useState<Partial<QuickLogData> | null>(null)
   const [quickLogData, setQuickLogData] = useState<QuickLogData | null>(null)
+  const [clinicalLogs, setClinicalLogs] = useState<ClinicalLogs>({})
   const [bomPreview, setBomPreview] = useState<BomLine[]>([])
 
   useEffect(() => {
-    if (isOrtho) {
-      getLastQuickLog(patientId).then((value) => {
-        setLastQuickLog(value)
-        if (value) setQuickLogData(value as QuickLogData)
-      })
-    }
-  }, [patientId, isOrtho])
+    getLastClinicalLogs(patientId).then((value) => {
+      setClinicalLogs(value.logs as ClinicalLogs)
+      const ortho = value.ortho as Partial<QuickLogData> | null
+      setLastQuickLog(ortho)
+      if (ortho) setQuickLogData(ortho as QuickLogData)
+    })
+  }, [patientId])
 
   // Live stock preview whenever the selection changes.
   useEffect(() => {
@@ -119,7 +133,13 @@ export function VisitDraft({
     formData.set('patient_id', patientId)
     formData.set('notes', notes)
     if (clinic) formData.set('clinic_id', clinic)
-    if (quickLogData) formData.set('quick_log', JSON.stringify(quickLogData))
+    const selectedCategories = new Set(procedures.filter((p) => selectedIds.includes(p.id)).map((p) => p.category))
+    const logsForVisit: Record<string, unknown> = Object.fromEntries(Object.entries(clinicalLogs).filter(([category]) => category === 'ortho' ? selectedCategories.has('ortho') : selectedCategories.has(category)))
+    if (quickLogData && selectedCategories.has('ortho')) {
+      formData.set('quick_log', JSON.stringify(quickLogData))
+      logsForVisit.ortho = quickLogData
+    }
+    if (Object.keys(logsForVisit).length > 0) formData.set('clinical_logs', JSON.stringify(logsForVisit))
     // Visit done: the save itself sends the doctor back to the day's board,
     // where the patient now shows as seen.
     formData.set('then', 'appointments')
@@ -150,6 +170,9 @@ export function VisitDraft({
     lastQuickLog,
     setLastQuickLog,
     setQuickLogData,
+    clinicalLogs,
+    setClinicalLog: (category, value) => setClinicalLogs((previous) => ({ ...previous, [category]: value })),
+    setClinicalLogs,
     bomPreview,
     stockProblem,
     isPending,
@@ -163,16 +186,33 @@ export function VisitDraft({
 /** Top of the page: what is being done today. */
 export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; procedures: string[] } | null }) {
   const d = useDraft()
-  const [orthoVisitOpen, setOrthoVisitOpen] = useState(d.isOrtho)
+  const [openLogs, setOpenLogs] = useState<Record<string, boolean>>({})
   const [loadingLast, startLoading] = useTransition()
   const groupedProcedures = useMemo(() => groupByCategory(d.procedures), [d.procedures])
+  const activeLogCategories = useMemo(() => {
+    const selected = new Set(d.procedures.filter((p) => d.selectedIds.includes(p.id)).map((p) => p.category))
+    return LOG_CATEGORIES.filter((category) => selected.has(category))
+  }, [d.procedures, d.selectedIds])
+  const showOrthoLog = d.canUseOrthoLog && d.procedures.some((p) => p.category === 'ortho' && d.selectedIds.includes(p.id))
+  useEffect(() => {
+    setOpenLogs((previous) => {
+      const next = { ...previous }
+      for (const category of activeLogCategories) if (!(category in next)) next[category] = true
+      if (showOrthoLog && !('ortho' in next)) next.ortho = true
+      return next
+    })
+  }, [activeLogCategories, showOrthoLog])
 
   function repeatLastVisit() {
     startLoading(async () => {
       const setup = await getLastVisitSetup(d.patientId)
       if (!setup) return
       d.setSelectedIds(setup.procedureIds)
-      if (setup.quickLog) d.setLastQuickLog(setup.quickLog)
+      d.setClinicalLogs((setup.clinicalLogs as ClinicalLogs | null) || {})
+      if (setup.quickLog) {
+        d.setLastQuickLog(setup.quickLog)
+        d.setQuickLogData(setup.quickLog as QuickLogData)
+      }
     })
   }
 
@@ -244,30 +284,25 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
           </div>
         )}
 
-        {d.isOrtho && d.canUseOrthoLog && (
+        {showOrthoLog && (
           <div className="overflow-hidden rounded-card border border-gold/30 bg-gold/[0.04]">
-            <button
-              type="button"
-              onClick={() => setOrthoVisitOpen((open) => !open)}
-              aria-expanded={orthoVisitOpen}
-              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-gold/[0.08]"
-            >
-              <span>
-                <span className="block text-sm font-medium text-gold-deep">Orthodontic log</span>
-                <span className="mt-0.5 block text-xs text-ink/55">Record wires, mechanics, elastics and the next review in this visit.</span>
-              </span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-gold-deep">
-                {orthoVisitOpen ? 'Hide' : 'Open'}
-                {orthoVisitOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-              </span>
+            <button type="button" onClick={() => setOpenLogs((current) => ({ ...current, ortho: !current.ortho }))} aria-expanded={!!openLogs.ortho} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-gold/[0.08]">
+              <span><span className="block text-sm font-medium text-gold-deep">Orthodontic log</span><span className="mt-0.5 block text-xs text-ink/55">Record wires, mechanics, elastics and the next review in this visit.</span></span>
+              <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-gold-deep">{openLogs.ortho ? 'Hide' : 'Open'}{openLogs.ortho ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</span>
             </button>
-            {orthoVisitOpen && (
-              <div className="border-t border-gold/20">
-                <OrthoQuickLog key={JSON.stringify(d.lastQuickLog)} initial={d.lastQuickLog} onChange={d.setQuickLogData} />
-              </div>
-            )}
+            {openLogs.ortho && <div className="border-t border-gold/20"><OrthoQuickLog key={JSON.stringify(d.lastQuickLog)} initial={d.lastQuickLog} onChange={d.setQuickLogData} /></div>}
           </div>
         )}
+
+        {LOG_CATEGORIES.filter((category) => d.procedures.some((p) => p.category === category && d.selectedIds.includes(p.id))).map((category) => (
+          <div key={category} className="overflow-hidden rounded-card border border-teal/25 bg-teal/[0.03]">
+            <button type="button" onClick={() => setOpenLogs((current) => ({ ...current, [category]: !current[category] }))} aria-expanded={!!openLogs[category]} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-teal/[0.06]">
+              <span><span className="block text-sm font-medium text-teal-deep">{LOG_LABELS[category]}</span><span className="mt-0.5 block text-xs text-ink/55">{LOG_DESCRIPTIONS[category]}</span></span>
+              <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-teal-deep">{openLogs[category] ? 'Hide' : 'Open'}{openLogs[category] ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</span>
+            </button>
+            {openLogs[category] && <div className="border-t border-teal/15"><StructuredTreatmentLog category={category} initial={d.clinicalLogs[category] as StructuredClinicalLog | undefined} onChange={(value) => d.setClinicalLog(category, value)} /></div>}
+          </div>
+        ))}
 
         <div className="space-y-1">
           <label htmlFor="visit-notes" className="text-sm text-ink/70">Notes</label>

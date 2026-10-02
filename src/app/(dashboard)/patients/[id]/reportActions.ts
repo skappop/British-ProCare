@@ -93,7 +93,7 @@ export async function getPatientReportData(patientId: string): Promise<PatientRe
   const [visitsRes, planRes, labsRes, imagesRes, nextRes] = await Promise.all([
     supabase
       .from('visits')
-      .select('visit_date, notes, visit_procedures(procedures(name))')
+      .select('visit_date, notes, clinical_logs, visit_procedures(procedures(name))')
       .eq('patient_id', patientId)
       .order('visit_date', { ascending: false }),
     supabase
@@ -124,10 +124,17 @@ export async function getPatientReportData(patientId: string): Promise<PatientRe
       .maybeSingle(),
   ])
 
-  type VisitRow = { visit_date: string; notes: string | null; visit_procedures: { procedures: Joined<{ name: string }> }[] | null }
+  type VisitRow = { visit_date: string; notes: string | null; clinical_logs: Record<string, unknown> | null; visit_procedures: { procedures: Joined<{ name: string }> }[] | null }
   const visits: ReportVisit[] = ((visitsRes.data ?? []) as unknown as VisitRow[]).map((v) => ({
     date: v.visit_date,
-    notes: v.notes || null,
+    notes: [v.notes, ...Object.entries(v.clinical_logs || {}).filter(([category]) => category !== 'ortho').flatMap(([category, fields]) => {
+      if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return []
+      const details = Object.entries(fields as Record<string, unknown>).flatMap(([key, value]) => {
+        const entries = Array.isArray(value) ? value.map(String).filter(Boolean) : typeof value === 'string' ? [value].filter(Boolean) : []
+        return entries.length ? [`${key.replace(/_/g, ' ')}: ${entries.join(', ')}`] : []
+      })
+      return details.length ? [`${category.toUpperCase()}: ${details.join(' · ')}`] : []
+    })].filter(Boolean).join('\n') || null,
     procedures: (v.visit_procedures ?? []).map((vp) => one(vp.procedures)?.name).filter((n): n is string => !!n),
   }))
 

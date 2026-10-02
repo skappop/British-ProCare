@@ -31,6 +31,19 @@ function formatQuickLog(log: any): string[] {
   return lines
 }
 
+function formatClinicalLogs(logs: Record<string, unknown> | null | undefined): string[] {
+  if (!logs || typeof logs !== 'object') return []
+  return Object.entries(logs).flatMap(([category, fields]) => {
+    if (category === 'ortho') return []
+    if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return []
+    const details = Object.entries(fields as Record<string, unknown>).flatMap(([key, value]) => {
+      const values = Array.isArray(value) ? value.map(String).filter(Boolean) : typeof value === 'string' ? [value].filter(Boolean) : []
+      return values.length ? [`${key.replace(/_/g, ' ')}: ${values.join(', ')}`] : []
+    })
+    return details.length ? [`${category.toUpperCase()}: ${details.join(' · ')}`] : []
+  })
+}
+
 export default async function PatientProfilePage({
   params,
 }: {
@@ -144,6 +157,12 @@ export default async function PatientProfilePage({
           {formatQuickLog(v.ortho_log || v.ortho_quick_log).map((line, i) => (
             <div key={i}>{line}</div>
           ))}
+        </div>
+      )}
+
+      {formatClinicalLogs(v.clinical_logs).length > 0 && (
+        <div className="mt-2 space-y-1 text-xs text-ink/60">
+          {formatClinicalLogs(v.clinical_logs).map((line, i) => <p key={i}>{line}</p>)}
         </div>
       )}
 
