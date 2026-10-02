@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { CheckCircle2, Pencil, Printer, X } from 'lucide-react'
+import Link from 'next/link'
+import { CheckCircle2, FileText, Pencil, Printer, X } from 'lucide-react'
 import { takePayment, removePayment } from './billingActions'
 import { PAYMENT_METHODS, methodLabel } from './methods'
 import { updateVisitFee } from '../actions'
@@ -234,6 +235,7 @@ export default function BillingDesk({
                   </button>
                 </span>
               ) : h.kind === 'visit' ? (
+<<<<<<< HEAD
                 <button
                   type="button"
                   onClick={() => {
@@ -246,6 +248,38 @@ export default function BillingDesk({
                   {h.priced ? (h.amount === 0 ? 'No charge' : egp(h.amount)) : 'Price not set'}
                   <Pencil size={12} className="text-ink/25 group-hover:text-teal-deep" />
                 </button>
+=======
+                <span className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditing(h.id)
+                      setPrice(String(h.amount || ''))
+                    }}
+                    title="Change the price (discount or correction)"
+                    className={`group inline-flex items-center gap-1.5 font-mono text-sm ${h.priced ? 'text-ink-strong' : 'font-sans text-gold-deep'}`}
+                  >
+                    {h.priced ? (h.amount === 0 ? 'No charge' : egp(h.amount)) : 'Price not set'}
+                    <Pencil size={12} className="text-ink/25 group-hover:text-teal-deep" />
+                  </button>
+                  <a
+                    href={`/receipts/visit/${h.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Print visit invoice"
+                    className="p-1 text-ink/35 hover:text-teal-deep"
+                  >
+                    <FileText size={14} />
+                  </a>
+                  <Link
+                    href={`/patients/${patientId}/visits/${h.id}/edit`}
+                    title="Edit this visit (procedures, notes, fee)"
+                    className="p-1 text-ink/25 hover:text-teal-deep"
+                  >
+                    <Pencil size={14} />
+                  </Link>
+                </span>
+>>>>>>> e510a64 (Add ability to edit past visits and print visit invoices)
               ) : (
                 <span className="flex items-center gap-2">
                   <span className="font-mono text-sm text-success">− {egp(h.amount)}</span>
