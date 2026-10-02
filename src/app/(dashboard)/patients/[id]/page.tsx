@@ -13,7 +13,7 @@ import { getClinics } from '@/lib/clinics'
 import TreatmentPlanPanel from './TreatmentPlanPanel'
 import PatientLabCases from './PatientLabCases'
 import PatientNotes from './PatientNotes'
-import { canHandleMoney, getCurrentUserRole, isOwner } from '@/lib/auth/role'
+import { getCurrentUserRole } from '@/lib/auth/role'
 
 function formatQuickLog(log: any): string[] {
   if (!log) return []
@@ -57,65 +57,46 @@ export default async function PatientProfilePage({
   const patient = patientRow as any
   if (!patient) notFound()
 
-  const { data: visits } = await supabase
-    .from('visits')
-    .select('*, visit_procedures(procedures(name, code))')
-    .eq('patient_id', id)
-    .order('visit_date', { ascending: false })
-
-  const { data: procedures } = await supabase
-    .from('procedures')
-    .select('id, code, name, base_fee, category')
-    .eq('is_active', true)
-    .order('name')
-
   // This is the doctor's chairside view and the patient can see the screen, so
   // no fees, balances or payments appear on it for anyone. The front desk gets
   // a plain link to the separate billing page — no figures.
-  const showBillingLink = await canHandleMoney()
-  const canEditPastVisits = await isOwner()
+  const showBillingLink = role === 'owner' || role === 'assistant'
+  const canEditPastVisits = role === 'owner'
 
-  // Today's visit and what's booked next, for the doctor to run from here.
-  const { currentVisit, currentClinicId, seenToday, upcoming } = await getVisitState(id)
-  const clinicList = (await getClinics()).map((c) => ({ id: c.id, name: c.name }))
+  // These reads do not depend on one another. Keeping them in one round trip
+  // makes the doctor profile feel immediate on clinics with slower Supabase
+  // connections.
+  const [
+    { data: visits },
+    { data: procedures },
+    visitState,
+    clinics,
+    { data: plan },
+    { data: labCases },
+  ] = await Promise.all([
+    supabase.from('visits').select('*, visit_procedures(procedures(name, code))').eq('patient_id', id).order('visit_date', { ascending: false }),
+    supabase.from('procedures').select('id, code, name, base_fee, category').eq('is_active', true).order('name'),
+    getVisitState(id),
+    getClinics(),
+    supabase.from('treatment_plans').select('*').eq('patient_id', id).eq('status', 'active').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('lab_cases').select('*').eq('patient_id', id).order('sent_at', { ascending: false }),
+  ])
+  const { currentVisit, currentClinicId, seenToday, upcoming } = visitState
+  const clinicList = clinics.map((c) => ({ id: c.id, name: c.name }))
   const suggestedWeeks =
-    Number((visits?.[0] as { ortho_quick_log?: { next_visit_weeks?: number } } | undefined)?.ortho_quick_log?.next_visit_weeks) || null
-
-  // Ortho treatment plan (only relevant if is_ortho, but fetch is cheap and harmless either way)
-  const { data: plan } = await supabase
-    .from('treatment_plans')
-    .select('*')
-    .eq('patient_id', id)
-    .eq('status', 'active')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    Number((visits?.[0] as { ortho_log?: { next_visit_weeks?: number }; ortho_quick_log?: { next_visit_weeks?: number } } | undefined)?.ortho_log?.next_visit_weeks
+      ?? (visits?.[0] as { ortho_quick_log?: { next_visit_weeks?: number } } | undefined)?.ortho_quick_log?.next_visit_weeks) || null
 
   let phases: any[] = []
   let unassignedVisits: any[] = []
   if (plan) {
-    const { data: phaseRows } = await supabase
-      .from('treatment_plan_phases')
-      .select('*')
-      .eq('treatment_plan_id', plan.id)
-      .order('order_index', { ascending: true })
+    const [{ data: phaseRows }, { data: unassigned }] = await Promise.all([
+      supabase.from('treatment_plan_phases').select('*').eq('treatment_plan_id', plan.id).order('order_index', { ascending: true }),
+      supabase.from('visits').select('id, visit_date').eq('patient_id', id).is('treatment_plan_phase_id', null).order('visit_date', { ascending: false }).limit(10),
+    ])
     phases = phaseRows || []
-
-    const { data: unassigned } = await supabase
-      .from('visits')
-      .select('id, visit_date')
-      .eq('patient_id', id)
-      .is('treatment_plan_phase_id', null)
-      .order('visit_date', { ascending: false })
-      .limit(10)
     unassignedVisits = unassigned || []
   }
-
-  const { data: labCases } = await supabase
-    .from('lab_cases')
-    .select('*')
-    .eq('patient_id', id)
-    .order('sent_at', { ascending: false })
 
   const visitProps = {
     patientId: id,
@@ -158,9 +139,9 @@ export default async function PatientProfilePage({
         </div>
       )}
 
-      {formatQuickLog(v.ortho_quick_log).length > 0 && (
+      {formatQuickLog(v.ortho_log || v.ortho_quick_log).length > 0 && (
         <div className="text-xs text-ink/50 font-mono mt-2 space-y-0.5">
-          {formatQuickLog(v.ortho_quick_log).map((line, i) => (
+          {formatQuickLog(v.ortho_log || v.ortho_quick_log).map((line, i) => (
             <div key={i}>{line}</div>
           ))}
         </div>

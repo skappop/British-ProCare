@@ -73,6 +73,7 @@ export function buildReportPdf(
   logoDataUrl: string | null,
   options: {
     mode?: 'full' | 'images'
+    includeDentalChart?: boolean
     prepared?: Map<string, PreparedImage>
     skipped?: SkippedImage[]
   } = {}
@@ -319,16 +320,18 @@ export function buildReportPdf(
     )
 
     // ---- dental chart -----------------------------------------------------------
-    sectionTitle('Dental chart')
-    drawDentalSnapshot()
-    table(
-      ['Tooth', 'Status', 'Findings'],
-      report.findings.length
-        ? report.findings.map((f) => [f.fdi, TOOTH_STATUS[f.status] || label(f.status), f.note || ''])
-        : [['—', 'No findings charted', '']],
-      [26, 32, contentW - 58],
-      TEAL
-    )
+    if (options.includeDentalChart !== false) {
+      sectionTitle('Dental chart')
+      drawDentalSnapshot()
+      table(
+        ['Tooth', 'Status', 'Findings'],
+        report.findings.length
+          ? report.findings.map((f) => [f.fdi, TOOTH_STATUS[f.status] || label(f.status), f.note || ''])
+          : [['—', 'No findings charted', '']],
+        [26, 32, contentW - 58],
+        TEAL
+      )
+    }
 
     // ---- lab work ---------------------------------------------------------------
     if (report.labs.length) {
@@ -350,7 +353,7 @@ export function buildReportPdf(
     const startX = M + labelW + 4
     const gap = (contentW - labelW - 8) / 16
     const statusByTooth = new Map(report.findings.map((f) => [f.raw_fdi, f.status]))
-    const fill: Record<string, RGB> = { watch: DANGER, planned: GOLD, treated: TEAL, missing: INK_SOFT, healthy: [255, 255, 255] }
+    const code: Record<string, string> = { watch: '!', planned: 'P', treated: 'T', missing: 'X', healthy: '' }
     const upper = ['18', '17', '16', '15', '14', '13', '12', '11', '21', '22', '23', '24', '25', '26', '27', '28']
     const lower = ['48', '47', '46', '45', '44', '43', '42', '41', '31', '32', '33', '34', '35', '36', '37', '38']
     doc.setFillColor(...MARBLE)
@@ -366,26 +369,32 @@ export function buildReportPdf(
       teeth.forEach((fdi, i) => {
         const x = startX + i * gap
         const status = statusByTooth.get(fdi) || 'healthy'
-        doc.setFillColor(...(fill[status] || fill.healthy))
-        doc.setDrawColor(...INK_SOFT)
-        doc.setLineWidth(0.2)
+        doc.setFillColor(255, 255, 255)
+        doc.setDrawColor(...(status === 'watch' ? INK : INK_SOFT))
+        doc.setLineWidth(status === 'watch' ? 0.55 : 0.25)
         doc.roundedRect(x - 3.4, y0 - 4.2, 6.8, 8.4, 1.2, 1.2, 'FD')
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(5.2)
+        doc.setFont('helvetica', status === 'healthy' ? 'normal' : 'bold')
+        doc.setFontSize(status === 'healthy' ? 5.2 : 4.5)
         doc.setTextColor(...INK)
-        doc.text(fdi, x, y0 + 1.5, { align: 'center' })
+        doc.text(fdi, x, status === 'healthy' ? y0 + 1.5 : y0 - 0.1, { align: 'center' })
+        if (code[status]) {
+          doc.setFont('helvetica', 'bold')
+          doc.setFontSize(3.5)
+          doc.text(code[status], x, y0 + 2.8, { align: 'center' })
+        }
       })
     }
     drawRow(upper, chartY + 12, 'UPPER')
     drawRow(lower, chartY + 29, 'LOWER')
     y += chartH
-    const legend: [string, RGB][] = [['Problem', DANGER], ['Planned', GOLD], ['Treated', TEAL], ['Missing', INK_SOFT], ['Healthy', [255, 255, 255]]]
+    const legend: [string, string][] = [['! Problem', 'watch'], ['P Planned', 'planned'], ['T Treated', 'treated'], ['X Missing', 'missing'], ['Healthy', 'healthy']]
     let lx = M + 4
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(6.5)
-    legend.forEach(([name, color]) => {
-      doc.setFillColor(...color)
-      doc.setDrawColor(...INK_SOFT)
+    legend.forEach(([name, status]) => {
+      doc.setFillColor(255, 255, 255)
+      doc.setDrawColor(...(status === 'watch' ? INK : INK_SOFT))
+      doc.setLineWidth(status === 'watch' ? 0.55 : 0.25)
       doc.rect(lx, y + 3, 3, 3, 'FD')
       doc.setTextColor(...INK_SOFT)
       doc.text(name, lx + 4.5, y + 5.4)

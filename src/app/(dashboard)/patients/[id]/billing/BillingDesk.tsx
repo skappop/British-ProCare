@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { CheckCircle2, FileText, Pencil, Printer, X } from 'lucide-react'
 import { takePayment, removePayment } from './billingActions'
@@ -35,13 +36,20 @@ export default function BillingDesk({
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [price, setPrice] = useState('')
+  const [discountOpen, setDiscountOpen] = useState(false)
+  const [discountMode, setDiscountMode] = useState<'percent' | 'fixed'>('percent')
+  const [discountValue, setDiscountValue] = useState('10')
   const [isPending, startTransition] = useTransition()
+  const router = useRouter()
 
   const value = Number(amount)
-  // Saved without a price (e.g. procedures with no price in the list): not
-  // "paid", just not priced yet. Reception sets it, or marks it free.
-  const unpriced = history.filter((h): h is Extract<HistoryItem, { kind: 'visit' }> => h.kind === 'visit' && !h.priced)
   const label = PAYMENT_METHODS.find((m) => m.value === method)?.label ?? ''
+  const latestVisit = useMemo(() => history.find((h): h is Extract<HistoryItem, { kind: 'visit' }> => h.kind === 'visit' && h.amount > 0), [history])
+  const discount = Number(discountValue) || 0
+  const discountAmount = latestVisit
+    ? Math.min(latestVisit.amount, discountMode === 'percent' ? latestVisit.amount * Math.min(discount, 100) / 100 : Math.max(discount, 0))
+    : 0
+  const adjustedVisitTotal = latestVisit ? Math.max(0, latestVisit.amount - discountAmount) : 0
 
   const [duplicate, setDuplicate] = useState<string | null>(null)
 
@@ -65,6 +73,7 @@ export default function BillingDesk({
       const res = await updateVisitFee(visitId, patientId, value)
       if (!res.ok) return setError(res.message || 'Could not change the price')
       setEditing(null)
+      router.refresh()
     })
   }
 
@@ -79,15 +88,13 @@ export default function BillingDesk({
   return (
     <div className="space-y-5">
       {/* 1. Where they stand */}
-      <div className={`rounded-card px-6 py-5 ${balance > 0 ? 'bg-marquina text-white' : unpriced.length > 0 ? 'bg-gold/10' : 'bg-success/10'}`}>
+      <div className={`rounded-card px-6 py-5 ${balance > 0 ? 'bg-marquina text-white' : 'bg-success/10'}`}>
         <p className={`text-sm ${balance > 0 ? 'text-white/60' : 'text-ink/55'}`}>
           {name}
           {fileNumber ? ` · File #${fileNumber}` : ''}
         </p>
         {balance > 0 ? (
           <p className="mt-1 font-display text-3xl text-gold-light">Owes {egp(balance)}</p>
-        ) : unpriced.length > 0 ? (
-          <p className="mt-1 font-display text-3xl text-gold-deep">Price not set yet</p>
         ) : (
           <p className="mt-1 inline-flex items-center gap-2 font-display text-3xl text-success">
             <CheckCircle2 size={26} /> All paid
@@ -95,19 +102,6 @@ export default function BillingDesk({
           </p>
         )}
       </div>
-
-      {unpriced.map((v) => (
-        <UnpricedVisit
-          key={v.id}
-          visit={v}
-          busy={isPending}
-          onSave={(fee) => {
-            savePrice(v.id, fee)
-            // Ready to take: what they owe once this price is on.
-            if (Number(fee) > 0) setAmount(String(Math.max(balance, 0) + Number(fee)))
-          }}
-        />
-      ))}
 
       {/* 2. Take the payment */}
       <div className="space-y-4 rounded-card bg-white p-6 shadow-soft">
@@ -156,13 +150,37 @@ export default function BillingDesk({
               placeholder="0"
               className="min-w-0 flex-1 bg-transparent px-2 py-3 font-mono text-xl text-ink-strong focus:outline-none"
             />
-            {balance > 0 && value !== balance && (
-              <button type="button" onClick={() => setAmount(String(balance))} className="mr-2 rounded-control px-2 py-1 text-xs text-teal-deep hover:bg-teal/10">
-                Full {egp(balance)}
-              </button>
-            )}
+            {balance > 0 && value !== balance && <button type="button" onClick={() => setAmount(String(balance))} className="mr-2 rounded-control px-2 py-1 text-xs text-teal-deep hover:bg-teal/10">Full {egp(balance)}</button>}
           </div>
         </label>
+
+        {balance > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-ink/45">Installment:</span>
+            {[25, 50].map((percent) => <button key={percent} type="button" onClick={() => setAmount(String(Math.round(balance * percent / 100)))} className="rounded-full border border-ink/15 px-3 py-1.5 text-ink/65 hover:border-teal hover:text-teal-deep">{percent}% · {egp(balance * percent / 100)}</button>)}
+            <button type="button" onClick={() => setAmount(String(balance))} className="rounded-full border border-teal/30 bg-teal/5 px-3 py-1.5 text-teal-deep">Full</button>
+          </div>
+        )}
+
+        {latestVisit && (
+          <div className="border-t border-ink/8 pt-3">
+            <button type="button" onClick={() => setDiscountOpen((open) => !open)} className="text-sm text-teal-deep hover:underline">
+              {discountOpen ? 'Hide discount' : 'Apply a discount'}
+            </button>
+            {discountOpen && (
+              <div className="mt-3 space-y-3 rounded-control bg-gold/10 p-3">
+                <p className="text-xs text-ink/55">Adjust the latest visit ({egp(latestVisit.amount)}). The new total is calculated for you.</p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setDiscountMode('percent')} className={`rounded-control border px-3 py-1.5 text-xs ${discountMode === 'percent' ? 'border-teal bg-teal text-white' : 'border-ink/15 text-ink/65'}`}>Percentage</button>
+                  <button type="button" onClick={() => setDiscountMode('fixed')} className={`rounded-control border px-3 py-1.5 text-xs ${discountMode === 'fixed' ? 'border-teal bg-teal text-white' : 'border-ink/15 text-ink/65'}`}>Fixed amount</button>
+                  <input inputMode="decimal" aria-label="Discount" value={discountValue} onChange={(e) => setDiscountValue(e.target.value.replace(/[^\d.]/g, ''))} className="w-24 rounded-control border border-ink/15 bg-white px-3 py-1.5 text-right font-mono text-sm" />
+                  <span className="self-center text-xs text-ink/45">{discountMode === 'percent' ? '%' : 'EGP'}</span>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm"><span className="text-ink/60">New visit total <strong className="font-mono text-ink-strong">{egp(adjustedVisitTotal)}</strong></span><button type="button" disabled={isPending || discountAmount <= 0} onClick={() => savePrice(latestVisit.id, String(adjustedVisitTotal))} className="rounded-control bg-teal px-3 py-2 text-xs font-medium text-white disabled:bg-ink/20">Apply discount</button></div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {PAYMENT_METHODS.map((m) => (
@@ -243,9 +261,9 @@ export default function BillingDesk({
                       setPrice(String(h.amount || ''))
                     }}
                     title="Change the price (discount or correction)"
-                    className={`group inline-flex items-center gap-1.5 font-mono text-sm ${h.priced ? 'text-ink-strong' : 'font-sans text-gold-deep'}`}
+                    className="group inline-flex items-center gap-1.5 font-mono text-sm text-ink-strong"
                   >
-                    {h.priced ? (h.amount === 0 ? 'No charge' : egp(h.amount)) : 'Price not set'}
+                    {h.amount === 0 ? 'No charge' : egp(h.amount)}
                     <Pencil size={12} className="text-ink/25 group-hover:text-teal-deep" />
                   </button>
                   <a
@@ -280,61 +298,6 @@ export default function BillingDesk({
           ))}
           {history.length === 0 && <p className="px-6 py-8 text-center text-sm text-ink/40">Nothing yet.</p>}
         </div>
-      </div>
-    </div>
-  )
-}
-
-/** A visit saved without a price: set it here, or mark it free. */
-function UnpricedVisit({
-  visit,
-  busy,
-  onSave,
-}: {
-  visit: Extract<HistoryItem, { kind: 'visit' }>
-  busy: boolean
-  onSave: (fee: string) => void
-}) {
-  const [fee, setFee] = useState('')
-  return (
-    <div className="space-y-3 rounded-card border border-gold/40 bg-gold/10 p-5">
-      <div>
-        <p className="font-medium text-ink-strong">Visit on {day(visit.at)} has no price yet</p>
-        {visit.what && <p className="text-sm text-ink/60">{visit.what}</p>}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center rounded-control border border-ink/15 bg-white focus-within:ring-2 focus-within:ring-teal">
-          <span className="pl-3 text-sm text-ink/45">EGP</span>
-          <input
-            inputMode="decimal"
-            value={fee}
-            onChange={(e) => setFee(e.target.value.replace(/[^\d.]/g, ''))}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && Number(fee) > 0) onSave(fee)
-            }}
-            placeholder="Price"
-            aria-label="Price for this visit"
-            className="w-28 bg-transparent px-2 py-2.5 font-mono text-base focus:outline-none"
-          />
-        </div>
-        <button
-          type="button"
-          disabled={busy || !(Number(fee) > 0)}
-          onClick={() => onSave(fee)}
-          className="rounded-control bg-teal px-4 py-2.5 text-sm font-medium text-white disabled:bg-ink/20"
-        >
-          Set price
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            if (confirm('Mark this visit as free (no charge)?')) onSave('0')
-          }}
-          className="rounded-control border border-ink/15 bg-white px-4 py-2.5 text-sm text-ink/70"
-        >
-          No charge
-        </button>
       </div>
     </div>
   )

@@ -19,9 +19,9 @@ export default async function BillingPage({ params }: { params: Promise<{ id: st
   if (!patient) notFound()
 
   const [{ data: visits }, { data: payments }] = await Promise.all([
-    supabase
+      supabase
       .from('visits')
-      .select('id, visit_date, fee_charged, visit_procedures(procedures(name))')
+      .select('id, visit_date, fee_charged, visit_procedures(procedures(name, base_fee))')
       .eq('patient_id', id)
       .order('visit_date', { ascending: false }),
     supabase.from('payments').select('id, amount, method, note, paid_at').eq('patient_id', id).order('paid_at', { ascending: false }),
@@ -31,15 +31,20 @@ export default async function BillingPage({ params }: { params: Promise<{ id: st
     id: string
     visit_date: string
     fee_charged: number | null
-    visit_procedures: { procedures: { name: string } | { name: string }[] | null }[] | null
+    visit_procedures: { procedures: { name: string; base_fee: number | null } | { name: string; base_fee: number | null }[] | null }[] | null
   }
   const history: HistoryItem[] = [
     ...((visits ?? []) as unknown as VisitRow[]).map((v) => ({
       kind: 'visit' as const,
       id: v.id,
       at: v.visit_date,
-      amount: Number(v.fee_charged) || 0,
-      priced: v.fee_charged !== null && v.fee_charged !== undefined,
+      amount: v.fee_charged !== null && v.fee_charged !== undefined
+        ? Number(v.fee_charged) || 0
+        : (v.visit_procedures ?? []).reduce((sum, vp) => {
+            const procedure = Array.isArray(vp.procedures) ? vp.procedures[0] : vp.procedures
+            return sum + (Number(procedure?.base_fee) || 0)
+          }, 0),
+      priced: true,
       what: (v.visit_procedures ?? [])
         .map((vp) => (Array.isArray(vp.procedures) ? vp.procedures[0]?.name : vp.procedures?.name))
         .filter((n): n is string => !!n)

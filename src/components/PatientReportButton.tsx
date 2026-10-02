@@ -26,18 +26,19 @@ async function loadLogo(cache: React.MutableRefObject<string | null>): Promise<s
   }
 }
 
-type Kind = 'report+images' | 'report' | 'images'
+type Kind = 'report+images' | 'report' | 'report-no-chart' | 'images'
 type Outcome = { ok: boolean; text: string; details?: string[] }
 
 const KIND_LABEL: Record<Kind, string> = {
   'report+images': 'Report with images',
   report: 'Report only (no images)',
+  'report-no-chart': 'Report without dental chart',
   images: 'Images only',
 }
 
 /** Says what actually went into the PDF, so a missing picture is never a surprise. */
 function describe(kind: Kind, total: number, included: number, skipped: SkippedImage[], listError: string | null): Outcome {
-  if (kind === 'report') return { ok: true, text: 'Report downloaded' }
+  if (kind === 'report' || kind === 'report-no-chart') return { ok: true, text: 'Report downloaded' }
   if (listError) return { ok: false, text: `Downloaded, but the image list could not be read: ${listError}` }
   if (total === 0) return { ok: true, text: 'Downloaded — this patient has no images on file yet' }
   if (included === total) return { ok: true, text: `Downloaded with all ${total} image${total === 1 ? '' : 's'}` }
@@ -92,7 +93,7 @@ export default function PatientReportButton({
           }
           let prepared = new Map<string, PreparedImage>()
           let skipped: SkippedImage[] = []
-          if (kind !== 'report' && report.images.length) {
+          if (kind !== 'report' && kind !== 'report-no-chart' && report.images.length) {
             const loaded = await loadReportImages(report.images, (done, total) => setProgress(`Images ${done}/${total}…`))
             prepared = loaded.prepared
             skipped = loaded.skipped
@@ -101,9 +102,9 @@ export default function PatientReportButton({
           setProgress('Building PDF…')
           const { jsPDF } = await import('jspdf')
           const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
-          buildReportPdf(doc, report, logo, { mode: kind === 'images' ? 'images' : 'full', prepared, skipped })
+          buildReportPdf(doc, report, logo, { mode: kind === 'images' ? 'images' : 'full', includeDentalChart: kind !== 'report-no-chart', prepared, skipped })
           const safeName = report.patient.full_name.replace(/[^\w\s-]/g, '').trim() || 'patient'
-          doc.save(`${kind === 'images' ? 'Images' : 'Report'} - ${safeName}.pdf`)
+          doc.save(`${kind === 'images' ? 'Images' : kind === 'report-no-chart' ? 'Report without dental chart' : 'Report'} - ${safeName}.pdf`)
           setOutcome(describe(kind, report.images.length, prepared.size, skipped, report.imagesError))
         })(),
         350
@@ -193,7 +194,7 @@ export default function PatientReportButton({
         <span className="inline-flex flex-col"><button type="button" onClick={() => setOpen((v) => !v)} disabled={loading} aria-expanded={open} className="inline-flex items-center gap-1.5 text-sm text-gold-light hover:underline disabled:opacity-70">{loading ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}{text}{!loading && <ChevronDown size={14} />}</button>
         {open && (
           <span className="absolute left-0 top-full z-20 mt-2 w-64 overflow-hidden rounded-control bg-white py-1 text-ink shadow-soft ring-1 ring-ink/10">
-            {(['report+images', 'report', 'images'] as Kind[]).map((kind) => (
+            {(['report+images', 'report', 'report-no-chart', 'images'] as Kind[]).map((kind) => (
               <button
                 key={kind}
                 type="button"
@@ -208,7 +209,9 @@ export default function PatientReportButton({
                       ? 'Everything, with photos and X-rays'
                       : kind === 'report'
                         ? 'Small file, quick to send'
-                        : 'Photos and X-rays on their own'}
+                        : kind === 'report-no-chart'
+                          ? 'Clinical report without the tooth diagram'
+                          : 'Photos and X-rays on their own'}
                   </span>
                 </span>
               </button>

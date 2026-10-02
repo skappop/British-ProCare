@@ -26,9 +26,24 @@ export default function PatientNotes({ patientId, initialReport, initialPrivate,
 
   return <section className="rounded-card border border-gold/20 bg-white shadow-soft">
     <div className="flex items-center gap-2 border-b border-ink/5 px-5 py-4"><NotebookPen size={17} className="text-gold-deep" /><h2 className="font-display text-lg text-ink-strong">Patient notes</h2><span className="ml-auto inline-flex items-center gap-1 text-[11px] text-ink/40">{state === 'saving' || pending ? <><Loader2 size={12} className="animate-spin" /> Saving</> : state === 'saved' ? <><Check size={12} /> Saved</> : state === 'error' ? 'Not saved' : 'Autosaves'}</span></div>
-    <div className="grid gap-4 p-5 sm:grid-cols-2">
-      <label className="space-y-1 text-sm text-ink/70"><span>Report notes <span className="text-xs text-ink/35">included in PDF</span></span><textarea value={report} onChange={(e) => setReport(e.target.value)} rows={4} placeholder="What another dentist or the patient should see…" className="w-full rounded-control border border-ink/15 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal" /></label>
-      {canSeePrivate ? <details className="group rounded-control border border-ink/10"><summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm text-ink/70"><LockKeyhole size={14} className="text-ink/45" /> Doctor private notes <span className="ml-auto text-xs text-ink/35 group-open:hidden">Open</span><span className="ml-auto hidden text-xs text-ink/35 group-open:inline">Close</span></summary><div className="border-t border-ink/5 p-3"><textarea value={privateNotes} onChange={(e) => setPrivateNotes(e.target.value)} rows={5} placeholder="Never printed or shown to reception…" className="w-full rounded-control border border-ink/15 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal" /></div></details> : <div className="rounded-control bg-marble/60 px-3 py-3 text-sm text-ink/50">Private doctor notes are hidden for reception.</div>}
+    <div className="grid items-start gap-5 p-5 sm:grid-cols-2">
+      <div className="space-y-2">
+        <label htmlFor="report-notes" className="flex min-h-5 items-baseline gap-2 text-sm text-ink/70">
+          <span>Report notes</span><span className="text-xs text-ink/35">included in PDF</span>
+        </label>
+        <textarea id="report-notes" value={report} onChange={(e) => setReport(e.target.value)} rows={5} placeholder="What another dentist or the patient should see…" className="block min-h-32 w-full resize-y rounded-control border border-ink/15 px-3 py-2.5 text-sm leading-6 focus:outline-none focus:ring-2 focus:ring-teal" />
+      </div>
+      {canSeePrivate ? (
+        <details className="group overflow-hidden rounded-control border border-ink/10">
+          <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm text-ink/70">
+            <LockKeyhole size={14} className="text-ink/45" /> Doctor private notes
+            <span className="ml-auto text-xs text-ink/35 group-open:hidden">Open</span><span className="ml-auto hidden text-xs text-ink/35 group-open:inline">Close</span>
+          </summary>
+          <div className="border-t border-ink/5 p-3">
+            <textarea value={privateNotes} onChange={(e) => setPrivateNotes(e.target.value)} rows={5} placeholder="Never printed or shown to reception…" className="block min-h-32 w-full resize-y rounded-control border border-ink/15 px-3 py-2.5 text-sm leading-6 focus:outline-none focus:ring-2 focus:ring-teal" />
+          </div>
+        </details>
+      ) : <div className="min-h-10 rounded-control bg-marble/60 px-3 py-2.5 text-sm text-ink/50">Private doctor notes are hidden for reception.</div>}
     </div>
   </section>
 }

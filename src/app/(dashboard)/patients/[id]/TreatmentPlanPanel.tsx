@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { createTreatmentPlan, addPhase, advancePhase, assignVisitToPhase } from './treatmentPlanActions'
+import { createTreatmentPlan, addPhase, advancePhase, assignVisitToPhase, updatePhase } from './treatmentPlanActions'
+import { Check, Pencil, X } from 'lucide-react'
 
 type Phase = {
   id: string
@@ -43,6 +44,7 @@ export default function TreatmentPlanPanel({
   const router = useRouter()
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [showAddPhase, setShowAddPhase] = useState(false)
+  const [editingPhase, setEditingPhase] = useState<string | null>(null)
 
   function handleCreate(useDefaults: boolean) {
     startTransition(async () => {
@@ -78,6 +80,17 @@ export default function TreatmentPlanPanel({
       const res = await assignVisitToPhase(visitId, phaseId, patientId)
       setResult(res)
       if (res.ok) router.refresh()
+    })
+  }
+
+  function handleUpdatePhase(phaseId: string, formData: FormData) {
+    startTransition(async () => {
+      const res = await updatePhase(phaseId, patientId, formData)
+      setResult(res)
+      if (res.ok) {
+        setEditingPhase(null)
+        router.refresh()
+      }
     })
   }
 
@@ -143,36 +156,36 @@ export default function TreatmentPlanPanel({
 
       <div className="space-y-2 mb-4">
         {initialPhases.map((phase) => (
-          <div
-            key={phase.id}
-            className={`flex items-center justify-between px-3 py-2.5 rounded-control ${
-              phase.status === 'active' ? 'bg-teal/5 border border-teal/20' : 'bg-marble/40'
-            }`}
-          >
-            <div>
-              <p className="text-sm text-ink-strong font-medium">{phase.name}</p>
-              <p className="text-[10px] text-ink/40 font-mono mt-0.5">
-                {phase.planned_weeks ? `planned ${phase.planned_weeks} wks` : 'ongoing'}
-                {phase.actual_start_date &&
-                  ` · started ${new Date(phase.actual_start_date).toLocaleDateString('en-GB')}`}
-              </p>
+          editingPhase === phase.id ? (
+            <form key={phase.id} action={(formData) => handleUpdatePhase(phase.id, formData)} className="space-y-2 rounded-control border border-teal/25 bg-teal/[0.04] p-3">
+              <div className="grid gap-2 sm:grid-cols-[1fr_110px_130px]">
+                <input name="name" required defaultValue={phase.name} aria-label="Phase name" className="rounded-control border border-ink/15 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal" />
+                <input name="planned_weeks" type="number" min="1" max="520" defaultValue={phase.planned_weeks ?? ''} placeholder="Weeks" aria-label="Planned weeks" className="rounded-control border border-ink/15 bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal" />
+                <select name="status" defaultValue={phase.status} aria-label="Phase status" className="rounded-control border border-ink/15 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal">
+                  <option value="pending">Pending</option><option value="active">Active</option><option value="completed">Completed</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="submit" disabled={isPending} className="inline-flex items-center gap-1 rounded-control bg-teal px-3 py-1.5 text-xs text-white"><Check size={13} /> Save phase</button>
+                <button type="button" onClick={() => setEditingPhase(null)} className="inline-flex items-center gap-1 rounded-control border border-ink/15 px-3 py-1.5 text-xs text-ink/60"><X size={13} /> Cancel</button>
+              </div>
+            </form>
+          ) : (
+            <div key={phase.id} className={`flex flex-wrap items-center justify-between gap-3 rounded-control px-3 py-2.5 ${phase.status === 'active' ? 'border border-teal/20 bg-teal/5' : 'bg-marble/40'}`}>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink-strong">{phase.name}</p>
+                <p className="mt-0.5 text-[10px] font-mono text-ink/40">
+                  {phase.planned_weeks ? `planned ${phase.planned_weeks} wks` : 'ongoing'}
+                  {phase.actual_start_date && ` · started ${new Date(phase.actual_start_date).toLocaleDateString('en-GB')}`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`rounded-full px-2 py-1 text-[10px] uppercase tracking-wider ${STATUS_STYLES[phase.status]}`}>{phase.status}</span>
+                <button type="button" onClick={() => setEditingPhase(phase.id)} title={`Edit ${phase.name}`} className="rounded-control p-1.5 text-ink/40 hover:bg-white hover:text-teal-deep"><Pencil size={14} /></button>
+                {phase.status === 'active' && <button type="button" disabled={isPending} onClick={() => handleAdvance(phase.id)} className="rounded-control bg-teal px-2 py-1 text-[10px] text-white transition-colors hover:bg-teal-deep">Complete →</button>}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-[10px] px-2 py-1 rounded-full uppercase tracking-wider ${STATUS_STYLES[phase.status]}`}>
-                {phase.status}
-              </span>
-              {phase.status === 'active' && (
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => handleAdvance(phase.id)}
-                  className="text-[10px] px-2 py-1 rounded-control bg-teal hover:bg-teal-deep text-white transition-colors"
-                >
-                  Complete →
-                </button>
-              )}
-            </div>
-          </div>
+          )
         ))}
       </div>
 

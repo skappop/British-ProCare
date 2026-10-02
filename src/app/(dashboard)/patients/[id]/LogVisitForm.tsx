@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, ClipboardList } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react'
 import { useStoredValue } from '@/lib/useStoredValue'
 import { logVisit, getLastQuickLog, getBomPreview, getLastVisitSetup } from './actions'
 import OrthoQuickLog, { QuickLogData } from './OrthoQuickLog'
@@ -96,7 +96,12 @@ export function VisitDraft({
   const [bomPreview, setBomPreview] = useState<BomLine[]>([])
 
   useEffect(() => {
-    if (isOrtho) getLastQuickLog(patientId).then(setLastQuickLog)
+    if (isOrtho) {
+      getLastQuickLog(patientId).then((value) => {
+        setLastQuickLog(value)
+        if (value) setQuickLogData(value as QuickLogData)
+      })
+    }
   }, [patientId, isOrtho])
 
   // Live stock preview whenever the selection changes.
@@ -158,7 +163,7 @@ export function VisitDraft({
 /** Top of the page: what is being done today. */
 export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; procedures: string[] } | null }) {
   const d = useDraft()
-  const [orthoVisitOpen, setOrthoVisitOpen] = useState(false)
+  const [orthoVisitOpen, setOrthoVisitOpen] = useState(d.isOrtho)
   const [loadingLast, startLoading] = useTransition()
   const groupedProcedures = useMemo(() => groupByCategory(d.procedures), [d.procedures])
 
@@ -240,9 +245,27 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
         )}
 
         {d.isOrtho && d.canUseOrthoLog && (
-          <div className="space-y-2">
-            <button type="button" onClick={() => { setOrthoVisitOpen((open) => !open); if (orthoVisitOpen) d.setQuickLogData(null) }} className={`flex w-full items-center justify-between rounded-control border px-4 py-3 text-left text-sm transition-colors ${orthoVisitOpen ? 'border-gold/50 bg-gold/10 text-gold-deep' : 'border-ink/12 bg-white text-ink/70 hover:border-gold/40'}`}><span><span className="block font-medium">Orthodontic visit</span><span className="block text-xs opacity-65">Open the structured wire, mechanics and elastics log</span></span><span className="rounded-full border border-current px-2 py-0.5 text-[11px]">{orthoVisitOpen ? 'Open' : 'Add'}</span></button>
-            {orthoVisitOpen && <OrthoQuickLog key={JSON.stringify(d.lastQuickLog)} initial={d.lastQuickLog} onChange={d.setQuickLogData} />}
+          <div className="overflow-hidden rounded-card border border-gold/30 bg-gold/[0.04]">
+            <button
+              type="button"
+              onClick={() => setOrthoVisitOpen((open) => !open)}
+              aria-expanded={orthoVisitOpen}
+              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-gold/[0.08]"
+            >
+              <span>
+                <span className="block text-sm font-medium text-gold-deep">Orthodontic log</span>
+                <span className="mt-0.5 block text-xs text-ink/55">Record wires, mechanics, elastics and the next review in this visit.</span>
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-gold-deep">
+                {orthoVisitOpen ? 'Hide' : 'Open'}
+                {orthoVisitOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              </span>
+            </button>
+            {orthoVisitOpen && (
+              <div className="border-t border-gold/20">
+                <OrthoQuickLog key={JSON.stringify(d.lastQuickLog)} initial={d.lastQuickLog} onChange={d.setQuickLogData} />
+              </div>
+            )}
           </div>
         )}
 

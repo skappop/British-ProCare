@@ -178,7 +178,20 @@ export async function updatePatientNotes(
 
 export async function getLastQuickLog(patientId: string) {
   const supabase = await createClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
+    .from('visits')
+    .select('ortho_log, ortho_quick_log')
+    .eq('patient_id', patientId)
+    .not('ortho_log', 'is', null)
+    .order('visit_date', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (!error && data) return data.ortho_log || data.ortho_quick_log || null
+
+  // Older installations may only have the original column until migration 20
+  // is pasted into Supabase. Keep the chairside form useful during that window.
+  const legacy = await supabase
     .from('visits')
     .select('ortho_quick_log')
     .eq('patient_id', patientId)
@@ -186,8 +199,7 @@ export async function getLastQuickLog(patientId: string) {
     .order('visit_date', { ascending: false })
     .limit(1)
     .single()
-
-  return data?.ortho_quick_log || null
+  return legacy.data?.ortho_quick_log || null
 }
 
 export async function getBomPreview(procedureIds: string[]) {
@@ -214,7 +226,7 @@ export async function getLastVisitSetup(patientId: string) {
 
   const { data: lastVisit } = await supabase
     .from('visits')
-    .select('id, fee_charged, ortho_quick_log, visit_procedures(procedure_id)')
+    .select('id, fee_charged, ortho_log, ortho_quick_log, visit_procedures(procedure_id)')
     .eq('patient_id', patientId)
     .order('visit_date', { ascending: false })
     .limit(1)
@@ -224,7 +236,7 @@ export async function getLastVisitSetup(patientId: string) {
   return {
     procedureIds: (lastVisit.visit_procedures as any[])?.map((vp) => vp.procedure_id) || [],
     fee: lastVisit.fee_charged,
-    quickLog: lastVisit.ortho_quick_log,
+    quickLog: lastVisit.ortho_log || lastVisit.ortho_quick_log,
   }
 }
 

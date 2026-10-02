@@ -126,3 +126,45 @@ export async function assignVisitToPhase(visitId: string, phaseId: string, patie
   revalidatePath(`/patients/${patientId}`)
   return { ok: true, message: 'Visit linked to phase' }
 }
+
+export async function updatePhase(phaseId: string, patientId: string, formData: FormData) {
+  const supabase = await createClient()
+  const name = String(formData.get('name') || '').trim()
+  const plannedRaw = String(formData.get('planned_weeks') || '').trim()
+  const status = String(formData.get('status') || 'pending')
+
+  if (!name) return { ok: false, message: 'Give this phase a name' }
+  if (!['pending', 'active', 'completed'].includes(status)) return { ok: false, message: 'Choose a valid phase status' }
+  const plannedWeeks = plannedRaw ? Number(plannedRaw) : null
+  if (plannedWeeks !== null && (!Number.isInteger(plannedWeeks) || plannedWeeks < 1 || plannedWeeks > 520)) {
+    return { ok: false, message: 'Planned weeks must be a whole number between 1 and 520' }
+  }
+
+  const { data: current } = await supabase
+    .from('treatment_plan_phases')
+    .select('status, actual_start_date, actual_end_date')
+    .eq('id', phaseId)
+    .single()
+
+  const today = new Date().toISOString().slice(0, 10)
+  const update: Record<string, unknown> = {
+    name,
+    planned_weeks: plannedWeeks,
+    status,
+  }
+  if (status === 'active' && current?.status !== 'active') {
+    update.actual_start_date = current?.actual_start_date || today
+    update.actual_end_date = null
+  } else if (status === 'completed') {
+    update.actual_start_date = current?.actual_start_date || today
+    update.actual_end_date = current?.actual_end_date || today
+  } else if (status === 'pending') {
+    update.actual_end_date = null
+  }
+
+  const { error } = await supabase.from('treatment_plan_phases').update(update).eq('id', phaseId)
+  if (error) return { ok: false, message: error.message }
+
+  revalidatePath(`/patients/${patientId}`)
+  return { ok: true, message: 'Phase updated' }
+}
