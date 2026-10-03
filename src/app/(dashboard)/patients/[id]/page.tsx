@@ -257,6 +257,7 @@ export default async function PatientProfilePage({
       <VisitDraft
         patientId={id}
         procedures={procedures || []}
+        initialOdontogram={patient.odontogram || {}}
         isOrtho={patient.is_ortho}
         canUseOrthoLog={role !== 'assistant'}
         finishesVisit={!!currentVisit}

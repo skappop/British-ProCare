@@ -7,6 +7,7 @@ import { useStoredValue } from '@/lib/useStoredValue'
 import { logVisit, getLastClinicalLogs, getBomPreview, getLastVisitSetup } from './actions'
 import OrthoQuickLog, { QuickLogData } from './OrthoQuickLog'
 import StructuredTreatmentLog, { type LogCategory, type StructuredClinicalLog } from './TreatmentLogs'
+import { CONSERVATIVE_FINDING_CODES, CONSERVATIVE_TREATMENTS, findingLabel, findingsOf, palmer, type OdontogramData, type ToothCompletion } from '@/components/dental/charting'
 
 type Procedure = { id: string; code: string; name: string; base_fee: number | null; category: string }
 type BomLine = { name: string; unit: string; stock: number; qty: number }
@@ -60,6 +61,9 @@ type Draft = {
   clinicalLogs: ClinicalLogs
   setClinicalLog: (category: LogCategory, value: StructuredClinicalLog) => void
   setClinicalLogs: (value: ClinicalLogs) => void
+  odontogram: OdontogramData
+  completedTeeth: ToothCompletion[]
+  setCompletedTeeth: (value: ToothCompletion[]) => void
   bomPreview: BomLine[]
   stockProblem: boolean
   isPending: boolean
@@ -80,6 +84,7 @@ export function VisitDraft({
   procedures,
   isOrtho,
   canUseOrthoLog,
+  initialOdontogram,
   finishesVisit = false,
   children,
 }: {
@@ -87,6 +92,7 @@ export function VisitDraft({
   procedures: Procedure[]
   isOrtho: boolean
   canUseOrthoLog: boolean
+  initialOdontogram: OdontogramData
   /** The patient is on today's list, so saving also marks them seen. */
   finishesVisit?: boolean
   children: React.ReactNode
@@ -101,6 +107,8 @@ export function VisitDraft({
   const [lastQuickLog, setLastQuickLog] = useState<Partial<QuickLogData> | null>(null)
   const [quickLogData, setQuickLogData] = useState<QuickLogData | null>(null)
   const [clinicalLogs, setClinicalLogs] = useState<ClinicalLogs>({})
+  const [completedTeeth, setCompletedTeeth] = useState<ToothCompletion[]>([])
+  const [odontogram] = useState<OdontogramData>(initialOdontogram || {})
   const [bomPreview, setBomPreview] = useState<BomLine[]>([])
 
   useEffect(() => {
@@ -134,9 +142,10 @@ export function VisitDraft({
       logsForVisit.ortho = quickLogData
     }
     if (Object.keys(logsForVisit).length > 0) formData.set('clinical_logs', JSON.stringify(logsForVisit))
-    // Visit done: the save itself sends the doctor back to the day's board,
-    // where the patient now shows as seen.
-    formData.set('then', 'appointments')
+    if (completedTeeth.length > 0) formData.set('completed_teeth', JSON.stringify(completedTeeth))
+    // A current appointment goes back to the day's board after saving. A
+    // standalone patient record stays open so the updated chart is visible.
+    if (finishesVisit) formData.set('then', 'appointments')
 
     startTransition(async () => {
       const res = await logVisit(formData)
@@ -145,7 +154,8 @@ export function VisitDraft({
       if (res.ok) {
         setSelectedIds([])
         setNotes('')
-        router.push('/appointments')
+        if (finishesVisit) router.push('/appointments')
+        else router.refresh()
       }
     })
   }
@@ -167,6 +177,9 @@ export function VisitDraft({
     clinicalLogs,
     setClinicalLog: (category, value) => setClinicalLogs((previous) => ({ ...previous, [category]: value })),
     setClinicalLogs,
+    odontogram,
+    completedTeeth,
+    setCompletedTeeth,
     bomPreview,
     stockProblem,
     isPending,
@@ -188,6 +201,13 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
     return LOG_CATEGORIES.filter((category) => selected.has(category))
   }, [d.procedures, d.selectedIds])
   const showOrthoLog = d.procedures.some((p) => p.category === 'ortho' && d.selectedIds.includes(p.id))
+  const restorativeSelected = d.procedures.some((p) => p.category === 'restorative' && d.selectedIds.includes(p.id))
+  const conservativeTeeth = useMemo(() => Object.entries(d.odontogram)
+    .filter(([fdi, tooth]) => !d.completedTeeth.some((item) => item.fdi === fdi) && findingsOf(tooth).some((finding) => CONSERVATIVE_FINDING_CODES.has(finding.code)))
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true })), [d.odontogram, d.completedTeeth])
+  const [activeTooth, setActiveTooth] = useState<string | null>(null)
+  const [completionId, setCompletionId] = useState(CONSERVATIVE_TREATMENTS[0].treatment)
+  const activeCompletion = CONSERVATIVE_TREATMENTS.find((item) => item.treatment === completionId) || CONSERVATIVE_TREATMENTS[0]
   useEffect(() => {
     setOpenLogs((previous) => {
       const next = { ...previous }
@@ -208,6 +228,15 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
         d.setQuickLogData(setup.quickLog as QuickLogData)
       }
     })
+  }
+
+  function markToothTreated() {
+    if (!activeTooth) return
+    d.setCompletedTeeth([...d.completedTeeth, { ...activeCompletion, fdi: activeTooth }])
+    const current = (d.clinicalLogs.restorative || {}) as StructuredClinicalLog
+    const teeth = Array.isArray(current.tooth) ? current.tooth : current.tooth ? [current.tooth] : []
+    d.setClinicalLog('restorative', { ...current, tooth: Array.from(new Set([...teeth, activeTooth])) })
+    setActiveTooth(null)
   }
 
   return (
@@ -267,7 +296,26 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
                     <span><span className="block text-sm font-medium text-teal-deep">{LOG_LABELS[logCategory]}</span><span className="mt-0.5 block text-xs text-ink/55">Clinical details for the selected {CATEGORY_LABELS[category].toLowerCase()} treatment.</span></span>
                     <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-teal-deep">{openLogs[logCategory] ? 'Hide' : 'Open'}{openLogs[logCategory] ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</span>
                   </button>
-                  {openLogs[logCategory] && <div className="border-t border-teal/15"><StructuredTreatmentLog category={logCategory} initial={d.clinicalLogs[logCategory] as StructuredClinicalLog | undefined} onChange={(value) => d.setClinicalLog(logCategory, value)} /></div>}
+                  {openLogs[logCategory] && <div className="border-t border-teal/15">
+                    {logCategory === 'restorative' && restorativeSelected && <div className="space-y-3 border-b border-teal/15 bg-gold/[0.05] p-4">
+                      <div>
+                        <p className="text-sm font-medium text-ink-strong">Unfinished teeth from the chart</p>
+                        <p className="mt-0.5 text-xs text-ink/55">Choose a tooth diagnosed with caries or planned filling, then record what was completed today.</p>
+                      </div>
+                      {conservativeTeeth.length > 0 ? <>
+                        <div className="flex flex-wrap gap-2">
+                          {conservativeTeeth.map(([fdi, tooth]) => <button key={fdi} type="button" onClick={() => setActiveTooth(activeTooth === fdi ? null : fdi)} className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${activeTooth === fdi ? 'border-gold bg-gold text-white' : 'border-gold/40 bg-white text-gold-deep hover:bg-gold/10'}`}><span className="font-mono font-semibold">{palmer(fdi)}</span><span className="ml-1.5 opacity-75">{findingsOf(tooth).filter((finding) => CONSERVATIVE_FINDING_CODES.has(finding.code)).map(findingLabel).join(', ')}</span></button>)}
+                        </div>
+                        {activeTooth && <div className="rounded-control border border-gold/30 bg-white p-3">
+                          <p className="text-xs font-medium text-ink-strong">What was completed on {palmer(activeTooth)}?</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">{CONSERVATIVE_TREATMENTS.map((item) => <button key={item.treatment} type="button" onClick={() => setCompletionId(item.treatment)} className={`rounded-full border px-2.5 py-1.5 text-xs ${completionId === item.treatment ? 'border-teal bg-teal text-white' : 'border-ink/15 text-ink/65 hover:border-teal'}`}>{item.detail}</button>)}</div>
+                          <button type="button" onClick={markToothTreated} className="mt-3 inline-flex items-center gap-1.5 rounded-control bg-teal px-3 py-2 text-xs font-medium text-white hover:bg-teal-deep"><CheckCircle2 size={14} /> Mark treated today</button>
+                        </div>}
+                      </> : <p className="text-xs text-ink/50">No unfinished conservative teeth are currently marked. You can still enter restorative details below.</p>}
+                      {d.completedTeeth.length > 0 && <p className="text-xs text-success">Will update the chart when this visit is saved: {d.completedTeeth.map((item) => `${palmer(item.fdi)} · ${item.detail}`).join(', ')}</p>}
+                    </div>}
+                    <StructuredTreatmentLog category={logCategory} initial={d.clinicalLogs[logCategory] as StructuredClinicalLog | undefined} onChange={(value) => d.setClinicalLog(logCategory, value)} />
+                  </div>}
                 </div>
               )}
               {orthoSelected && (

@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { completeToothTreatment, CONSERVATIVE_TREATMENTS, isValidFdi, type OdontogramData, type ToothCompletion } from '@/components/dental/charting'
 
 export async function logVisit(formData: FormData) {
   const supabase = await createClient()
@@ -13,6 +14,7 @@ export async function logVisit(formData: FormData) {
   const fee = formData.get('fee') as string
   const quickLogRaw = formData.get('quick_log') as string
   const clinicalLogsRaw = formData.get('clinical_logs') as string
+  const completedTeethRaw = formData.get('completed_teeth') as string
 
   if (procedureIds.length === 0) {
     return { ok: false, message: 'Select at least one procedure' }
@@ -33,6 +35,23 @@ export async function logVisit(formData: FormData) {
       clinicalLogs = JSON.parse(clinicalLogsRaw)
     } catch {
       clinicalLogs = null
+    }
+  }
+
+  let completedTeeth: ToothCompletion[] = []
+  if (completedTeethRaw) {
+    try {
+      const parsed = JSON.parse(completedTeethRaw)
+      if (Array.isArray(parsed)) {
+        completedTeeth = parsed.flatMap((item): ToothCompletion[] => {
+          if (!item || typeof item !== 'object' || !isValidFdi(String(item.fdi))) return []
+          const option = CONSERVATIVE_TREATMENTS.find((candidate) => candidate.treatment === item.treatment)
+          if (!option) return []
+          return [{ ...option, fdi: String(item.fdi), ...(item.surfaces ? { surfaces: String(item.surfaces).slice(0, 5) } : {}) }]
+        })
+      }
+    } catch {
+      completedTeeth = []
     }
   }
 
@@ -82,6 +101,24 @@ export async function logVisit(formData: FormData) {
     }).eq('id', visitId)
   }
 
+  // A completed restorative tooth is part of the same visit action. Remove
+  // unfinished conservative findings and add a treated restoration so the next
+  // visit starts from the current chart instead of asking the clinician to
+  // remember what was done.
+  let chartError: string | null = null
+  if (completedTeeth.length > 0) {
+    const { data: patient, error: chartReadError } = await supabase.from('patients').select('odontogram').eq('id', patientId).single()
+    if (chartReadError) {
+      chartError = chartReadError.message
+    } else {
+      const odontogram: OdontogramData = { ...((patient?.odontogram as OdontogramData) || {}) }
+      const at = new Date().toISOString()
+      for (const completion of completedTeeth) odontogram[completion.fdi] = completeToothTreatment(odontogram[completion.fdi], completion, at)
+      const { error: chartWriteError } = await supabase.from('patients').update({ odontogram }).eq('id', patientId)
+      if (chartWriteError) chartError = chartWriteError.message
+    }
+  }
+
   revalidatePath(`/patients/${patientId}`)
   revalidatePath('/inventory')
   revalidatePath('/appointments')
@@ -92,6 +129,7 @@ export async function logVisit(formData: FormData) {
   // Done here, as part of the save, rather than by the browser afterwards:
   // a separate navigation can be cancelled by the live refresh that the
   // save's own changes set off, leaving the doctor on the patient's page.
+  if (chartError) return { ok: false, message: `Visit saved, but the dental chart could not be updated: ${chartError}` }
   if (formData.get('then') === 'appointments') redirect('/appointments')
 
   const warnings = (data as any)?.reorder_warnings || []

@@ -17,6 +17,43 @@ export type Finding = {
 export type ToothData = { status: ToothStatus; note?: string; findings?: Finding[] }
 export type OdontogramData = Record<string, ToothData>
 
+/** Findings that represent unfinished conservative/restorative work. */
+export const CONSERVATIVE_FINDING_CODES = new Set([
+  'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'caries', 'need_filling', 'fracture', 'watch', 'planned',
+])
+
+export type ToothCompletion = {
+  fdi: string
+  treatment: string
+  code: 'filling' | 'amalgam'
+  detail: string
+  surfaces?: string
+}
+
+export const CONSERVATIVE_TREATMENTS: ToothCompletion[] = [
+  { fdi: '', treatment: 'composite_class_i', code: 'filling', detail: 'Composite · Class I' },
+  { fdi: '', treatment: 'composite_class_ii', code: 'filling', detail: 'Composite · Class II' },
+  { fdi: '', treatment: 'composite_class_iii', code: 'filling', detail: 'Composite · Class III' },
+  { fdi: '', treatment: 'composite_class_iv', code: 'filling', detail: 'Composite · Class IV' },
+  { fdi: '', treatment: 'composite_class_v', code: 'filling', detail: 'Composite · Class V' },
+  { fdi: '', treatment: 'amalgam', code: 'amalgam', detail: 'Amalgam restoration' },
+  { fdi: '', treatment: 'glass_ionomer', code: 'filling', detail: 'Glass ionomer restoration' },
+  { fdi: '', treatment: 'temporary', code: 'filling', detail: 'Temporary filling' },
+]
+
+/** Replaces unfinished conservative findings with the treatment completed today. */
+export function completeToothTreatment(tooth: ToothData | undefined, completion: ToothCompletion, at = new Date().toISOString()): ToothData {
+  const remaining = findingsOf(tooth).filter((finding) => !CONSERVATIVE_FINDING_CODES.has(finding.code))
+  const treated: Finding = {
+    code: completion.code,
+    detail: completion.detail,
+    at,
+    ...(completion.surfaces ? { surfaces: completion.surfaces } : {}),
+  }
+  const findings = [...remaining, treated]
+  return { status: statusFromFindings(findings), findings, ...(tooth?.note ? { note: tooth.note } : {}) }
+}
+
 type Condition = {
   code: string
   label: string
