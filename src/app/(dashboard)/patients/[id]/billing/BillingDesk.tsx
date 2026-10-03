@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { CheckCircle2, FileText, Pencil, Printer, X } from 'lucide-react'
-import { takePayment, removePayment } from './billingActions'
+import { createPaymentPlan, takePayment, removePayment, type PaymentPlanView } from './billingActions'
 import { PAYMENT_METHODS, methodLabel } from './methods'
 import { applyVisitDiscount, updateVisitFee } from '../actions'
 
@@ -21,12 +21,14 @@ export default function BillingDesk({
   fileNumber,
   balance,
   history,
+  plans,
 }: {
   patientId: string
   name: string
   fileNumber: string | null
   balance: number
   history: HistoryItem[]
+  plans: PaymentPlanView[]
 }) {
   const [amount, setAmount] = useState(balance > 0 ? String(balance) : '')
   const [method, setMethod] = useState<string>('cash')
@@ -41,6 +43,12 @@ export default function BillingDesk({
   const [discountValue, setDiscountValue] = useState('10')
   const [discountNote, setDiscountNote] = useState('')
   const [isPending, startTransition] = useTransition()
+  const [selectedInstallmentId, setSelectedInstallmentId] = useState<string | null>(null)
+  const [planOpen, setPlanOpen] = useState(false)
+  const [planCount, setPlanCount] = useState('6')
+  const [planInterval, setPlanInterval] = useState('30')
+  const [planFirstDue, setPlanFirstDue] = useState(() => new Date().toISOString().slice(0, 10))
+  const [planNote, setPlanNote] = useState('')
   const router = useRouter()
 
   const value = Number(amount)
@@ -59,13 +67,14 @@ export default function BillingDesk({
     setError(null)
     setDuplicate(null)
     startTransition(async () => {
-      const res = await takePayment({ patientId, amount, method, note, confirmDuplicate })
+      const res = await takePayment({ patientId, amount, method, note, installmentId: selectedInstallmentId, confirmDuplicate })
       if (res.duplicate) return setDuplicate(res.message)
       if (!res.ok) return setError(res.message)
       setDone({ message: res.message, paymentId: res.paymentId })
       setAmount('')
       setNote('')
       setShowNote(false)
+      setSelectedInstallmentId(null)
     })
   }
 
@@ -96,6 +105,26 @@ export default function BillingDesk({
     startTransition(async () => {
       const res = await removePayment(paymentId, patientId)
       if (!res.ok) setError(res.message || 'Could not remove it')
+    })
+  }
+
+  function createPlan() {
+    if (!latestVisit) return
+    setError(null)
+    startTransition(async () => {
+      const res = await createPaymentPlan({
+        patientId,
+        visitId: latestVisit.id,
+        totalAmount: latestVisit.amount,
+        installmentCount: planCount,
+        intervalDays: planInterval,
+        firstDueAt: planFirstDue,
+        note: planNote,
+      })
+      if (!res.ok) return setError(res.message)
+      setPlanOpen(false)
+      setPlanNote('')
+      router.refresh()
     })
   }
 
@@ -187,6 +216,25 @@ export default function BillingDesk({
 
         {latestVisit && (
           <div className="border-t border-ink/8 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div><p className="text-sm text-ink-strong">Payment plan</p><p className="text-xs text-ink/45">Use a schedule for larger balances, or keep recording quick partial payments above.</p></div>
+              {!plans.some((plan) => plan.status === 'active') && <button type="button" onClick={() => setPlanOpen((value) => !value)} className="rounded-control border border-teal/30 px-3 py-1.5 text-xs text-teal-deep hover:bg-teal/10">{planOpen ? 'Close plan setup' : 'Create a plan'}</button>}
+            </div>
+            {planOpen && <div className="mt-3 space-y-3 rounded-control bg-marble/60 p-3">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <label className="space-y-1 text-xs text-ink/60"><span>Installments</span><select value={planCount} onChange={(event) => setPlanCount(event.target.value)} className="w-full rounded-control border border-ink/15 bg-white px-2.5 py-2 text-sm"><option value="2">2 payments</option><option value="3">3 payments</option><option value="4">4 payments</option><option value="6">6 payments</option><option value="8">8 payments</option><option value="12">12 payments</option></select></label>
+                <label className="space-y-1 text-xs text-ink/60"><span>Every</span><select value={planInterval} onChange={(event) => setPlanInterval(event.target.value)} className="w-full rounded-control border border-ink/15 bg-white px-2.5 py-2 text-sm"><option value="14">2 weeks</option><option value="30">1 month</option><option value="60">2 months</option></select></label>
+                <label className="space-y-1 text-xs text-ink/60"><span>First due</span><input type="date" value={planFirstDue} onChange={(event) => setPlanFirstDue(event.target.value)} className="w-full rounded-control border border-ink/15 bg-white px-2.5 py-2 text-sm" /></label>
+              </div>
+              <input value={planNote} onChange={(event) => setPlanNote(event.target.value)} placeholder="Plan note (optional)" className="w-full rounded-control border border-ink/15 bg-white px-3 py-2 text-sm" />
+              <button type="button" disabled={isPending} onClick={createPlan} className="rounded-control bg-teal px-3 py-2 text-xs font-medium text-white hover:bg-teal-deep disabled:opacity-50">Create schedule for {egp(latestVisit.amount)}</button>
+            </div>}
+            {plans.map((plan) => <div key={plan.id} className="mt-3 rounded-control border border-ink/10 bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-medium text-ink-strong">{plan.status === 'completed' ? 'Plan completed' : `${plan.installmentCount} payment schedule`}</span><span className="text-xs text-ink/45">Every {plan.intervalDays} days</span></div><div className="mt-2 grid gap-1.5 sm:grid-cols-2">{plan.installments.map((installment) => <button key={installment.id} type="button" disabled={installment.status === 'paid'} onClick={() => { setSelectedInstallmentId(installment.id); setAmount(String(Math.max(0, installment.amount - installment.paidAmount))); setNote(`Installment ${installment.sequence} of ${plan.installmentCount}`) }} className={`flex items-center justify-between rounded-control border px-3 py-2 text-left text-xs ${installment.status === 'paid' ? 'border-success/20 bg-success/5 text-success' : selectedInstallmentId === installment.id ? 'border-teal bg-teal/10 text-teal-deep' : 'border-ink/10 text-ink/65 hover:border-teal'}`}><span>#{installment.sequence} · {new Date(installment.dueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span><span className="font-mono">{installment.status === 'paid' ? 'Paid' : egp(Math.max(0, installment.amount - installment.paidAmount))}</span></button>)}</div></div>)}
+          </div>
+        )}
+
+        {latestVisit && (
+          <div className="border-t border-ink/8 pt-3">
             <button type="button" onClick={() => setDiscountOpen((open) => !open)} className="text-sm text-teal-deep hover:underline">
               {discountOpen ? 'Hide discount' : 'Apply a discount'}
             </button>
@@ -241,7 +289,7 @@ export default function BillingDesk({
           disabled={isPending || !(value > 0) || !!duplicate}
           className="w-full rounded-control bg-teal py-3 text-base font-medium text-white hover:bg-teal-deep disabled:bg-ink/20"
         >
-          {isPending ? 'Saving…' : value > 0 ? `Record ${egp(value)} · ${label}` : 'Enter the amount'}
+          {isPending ? 'Saving…' : value > 0 ? `${selectedInstallmentId ? 'Record installment' : 'Record'} ${egp(value)} · ${label}` : 'Enter the amount'}
         </button>
       </div>
 

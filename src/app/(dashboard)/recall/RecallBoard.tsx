@@ -12,6 +12,7 @@ export type RecallItem = {
   dueSince: string
   lastVisit: string
   reason: string
+  taskCount?: number
 }
 
 function numberForWhatsApp(phone: string) {
@@ -23,7 +24,7 @@ function numberForWhatsApp(phone: string) {
 
 function messageFor(item: RecallItem) {
   const firstName = item.name.trim().split(/\s+/)[0] || item.name
-  return `Hello ${firstName}, this is British ProCare Dental Clinics. Your follow-up visit is due. Reply here and our receptionist will help you choose a convenient appointment time. Thank you.`
+  return `Hello ${firstName}, this is British ProCare Dental Clinics. Your follow-up is due because ${item.reason.toLowerCase()}. Reply here and our receptionist will help you choose a convenient appointment time. Thank you.`
 }
 
 function dateLabel(iso: string) {
@@ -111,7 +112,7 @@ export default function RecallBoard({ items }: { items: RecallItem[] }) {
                   <Link href={`/patients/${item.id}`} className="truncate text-sm font-semibold text-ink-strong hover:text-teal-deep">{item.name}</Link>
                   <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${item.kind === 'ortho' ? 'bg-gold/15 text-gold-deep' : 'bg-teal/10 text-teal-deep'}`}>{item.kind === 'ortho' ? 'Ortho' : 'General'}</span>
                 </div>
-                <p className="mt-1 pl-6 text-xs text-ink/50">{item.phone || 'No phone number'} · Last visit {dateLabel(item.lastVisit)}</p>
+                <p className="mt-1 pl-6 text-xs text-ink/50">{item.phone || 'No phone number'} · Last visit {dateLabel(item.lastVisit)}{item.taskCount ? ` · ${item.taskCount} open task${item.taskCount === 1 ? '' : 's'}` : ''}</p>
                 <p className={`mt-1 pl-6 text-xs font-medium ${late > 0 ? 'text-danger' : 'text-gold-deep'}`}>{item.reason}</p>
               </div>
               <div className="pl-6 text-xs text-ink/55 sm:pl-0"><span className="font-mono">{dateLabel(item.dueSince)}</span>{late > 0 && <span className="ml-1 text-danger">· {late}d late</span>}</div>

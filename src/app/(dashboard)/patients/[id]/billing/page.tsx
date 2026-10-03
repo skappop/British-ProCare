@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { canHandleMoney } from '@/lib/auth/role'
 import LiveRefresh from '@/components/LiveRefresh'
 import BillingDesk, { type HistoryItem } from './BillingDesk'
+import { getPaymentPlans } from './billingActions'
 
 /**
  * Taking payment for one patient: what they owe, the payment, a receipt, and
@@ -18,13 +19,14 @@ export default async function BillingPage({ params }: { params: Promise<{ id: st
   const { data: patient } = await supabase.from('patients').select('full_name, file_number, phone').eq('id', id).maybeSingle()
   if (!patient) notFound()
 
-  const [{ data: visits }, { data: payments }] = await Promise.all([
+  const [{ data: visits }, { data: payments }, plans] = await Promise.all([
       supabase
       .from('visits')
       .select('id, visit_date, fee_charged, gross_fee, discount_type, discount_value, discount_amount, discount_note, visit_procedures(procedures(name, base_fee))')
       .eq('patient_id', id)
       .order('visit_date', { ascending: false }),
     supabase.from('payments').select('id, amount, method, note, paid_at').eq('patient_id', id).order('paid_at', { ascending: false }),
+    getPaymentPlans(id),
   ])
 
   type VisitRow = {
@@ -85,6 +87,7 @@ export default async function BillingPage({ params }: { params: Promise<{ id: st
         fileNumber={patient.file_number}
         balance={Math.round((charged - paid) * 100) / 100}
         history={history}
+        plans={plans}
       />
     </div>
   )

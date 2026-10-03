@@ -14,6 +14,7 @@ import TreatmentPlanPanel from './TreatmentPlanPanel'
 import PatientLabCases from './PatientLabCases'
 import PatientNotes from './PatientNotes'
 import { getCurrentUserRole } from '@/lib/auth/role'
+import { getClinicalTasks } from './clinicalTaskActions'
 
 function formatQuickLog(log: any): string[] {
   if (!log) return []
@@ -86,6 +87,7 @@ export default async function PatientProfilePage({
     clinics,
     { data: plan },
     { data: labCases },
+    clinicalTasks,
   ] = await Promise.all([
     supabase.from('visits').select('*, visit_procedures(procedures(name, code))').eq('patient_id', id).order('visit_date', { ascending: false }),
     supabase.from('procedures').select('id, code, name, base_fee, category').eq('is_active', true).order('name'),
@@ -93,6 +95,7 @@ export default async function PatientProfilePage({
     getClinics(),
     supabase.from('treatment_plans').select('*').eq('patient_id', id).eq('status', 'active').order('created_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('lab_cases').select('*').eq('patient_id', id).order('sent_at', { ascending: false }),
+    getClinicalTasks(id),
   ])
   const { currentVisit, currentClinicId, seenToday, upcoming } = visitState
   const clinicList = clinics.map((c) => ({ id: c.id, name: c.name }))
@@ -258,6 +261,7 @@ export default async function PatientProfilePage({
         patientId={id}
         procedures={procedures || []}
         initialOdontogram={patient.odontogram || {}}
+        initialTasks={clinicalTasks}
         isOrtho={patient.is_ortho}
         canUseOrthoLog={role !== 'assistant'}
         finishesVisit={!!currentVisit}
@@ -266,7 +270,7 @@ export default async function PatientProfilePage({
 
         <TreatmentPicker lastVisit={lastVisit} />
 
-        <Odontogram patientId={id} initialOdontogram={patient.odontogram || {}} />
+        <Odontogram patientId={id} initialOdontogram={patient.odontogram || {}} initialTasks={clinicalTasks} />
 
         <ImagingPanel patientId={id} />
 

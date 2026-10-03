@@ -29,6 +29,11 @@ file has not been run yet: run it and reload the page.
 | `17_storage_usage.sql` | Storage gauge on the dashboard | |
 | `18_stock_routines.sql` | Stock check: container refill, daily count, to-order list, undo | |
 | `19_performance_indexes.sql` | Faster Recall, Reports and patient pages as history grows | Optional, recommended; changes no data |
+| `20_doctor_attribution.sql` | Doctor attribution, private notes and ortho visit data | |
+| `21_clinical_treatment_logs.sql` | Structured treatment logs | |
+| `22_billing_discounts.sql` | Discount metadata for visit charges and invoices | |
+| `23_unified_clinical_tasks.sql` | Linked open treatment tasks from chart findings | Converts actionable odontogram findings into the new work queue |
+| `24_payment_plans.sql` | Optional scheduled installment plans | Quick partial payments remain available |
 
 `legacy/` holds one-off scripts from before this numbering (Google Sheets sync
 columns, calibration settings, the original payments table). They have already

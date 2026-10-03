@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { completeToothTreatment, CONSERVATIVE_TREATMENTS, isValidFdi, type OdontogramData, type ToothCompletion } from '@/components/dental/charting'
+import { completeClinicalTasks } from './clinicalTaskActions'
 
 export async function logVisit(formData: FormData) {
   const supabase = await createClient()
@@ -15,6 +16,7 @@ export async function logVisit(formData: FormData) {
   const quickLogRaw = formData.get('quick_log') as string
   const clinicalLogsRaw = formData.get('clinical_logs') as string
   const completedTeethRaw = formData.get('completed_teeth') as string
+  const completedTaskIdsRaw = formData.get('completed_task_ids') as string
 
   if (procedureIds.length === 0) {
     return { ok: false, message: 'Select at least one procedure' }
@@ -52,6 +54,16 @@ export async function logVisit(formData: FormData) {
       }
     } catch {
       completedTeeth = []
+    }
+  }
+
+  let completedTaskIds: string[] = []
+  if (completedTaskIdsRaw) {
+    try {
+      const parsed = JSON.parse(completedTaskIdsRaw)
+      if (Array.isArray(parsed)) completedTaskIds = parsed.filter((id): id is string => typeof id === 'string').slice(0, 50)
+    } catch {
+      completedTaskIds = []
     }
   }
 
@@ -119,6 +131,12 @@ export async function logVisit(formData: FormData) {
     }
   }
 
+  let taskError: string | null = null
+  if (visitId && completedTaskIds.length > 0) {
+    const result = await completeClinicalTasks(patientId, completedTaskIds, visitId, clinicalLogs || {})
+    if (!result.ok) taskError = result.message || 'The linked treatment tasks could not be updated'
+  }
+
   revalidatePath(`/patients/${patientId}`)
   revalidatePath('/inventory')
   revalidatePath('/appointments')
@@ -130,6 +148,7 @@ export async function logVisit(formData: FormData) {
   // a separate navigation can be cancelled by the live refresh that the
   // save's own changes set off, leaving the doctor on the patient's page.
   if (chartError) return { ok: false, message: `Visit saved, but the dental chart could not be updated: ${chartError}` }
+  if (taskError) return { ok: false, message: `Visit saved, but the linked treatment tasks could not be updated: ${taskError}` }
   if (formData.get('then') === 'appointments') redirect('/appointments')
 
   const warnings = (data as any)?.reorder_warnings || []

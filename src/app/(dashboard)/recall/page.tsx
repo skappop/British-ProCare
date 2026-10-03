@@ -10,7 +10,8 @@ export default async function RecallPage() {
   // Every patient with only their latest visit, a page at a time: all of
   // them, however many (a single request stops at 1,000 rows).
   type Row = { id: string; full_name: string; phone: string | null; is_ortho: boolean; visits: { visit_date: string; ortho_quick_log: any }[] }
-  const [{ data: patients }, { data: futureAppts }] = await Promise.all([
+  type TaskRow = { patient_id: string; category: string; title: string; tooth_fdi: string | null; due_at: string | null }
+  const [{ data: patients }, { data: futureAppts }, { data: clinicalTasks }] = await Promise.all([
     fetchAll<Row>((from, to) =>
       supabase
         .from('patients')
@@ -29,6 +30,11 @@ export default async function RecallPage() {
         .order('id')
         .range(from, to)
     ),
+    supabase
+      .from('clinical_tasks')
+      .select('patient_id, category, title, tooth_fdi, due_at')
+      .in('status', ['open', 'in_progress', 'deferred'])
+      .order('due_at', { ascending: true }),
   ])
 
   const lastVisitByPatient: Record<string, { visit_date: string; ortho_quick_log: any }> = {}
@@ -37,6 +43,12 @@ export default async function RecallPage() {
   }
 
   const bookedPatientIds = new Set(futureAppts.map((a) => a.patient_id))
+  const tasksByPatient = new Map<string, TaskRow[]>()
+  for (const task of ((clinicalTasks || []) as TaskRow[])) {
+    const list = tasksByPatient.get(task.patient_id) || []
+    list.push(task)
+    tasksByPatient.set(task.patient_id, list)
+  }
   const now = Date.now()
 
   const overdue: RecallItem[] = []
@@ -47,6 +59,23 @@ export default async function RecallPage() {
     if (!lastVisit) continue // never had a visit — not a recall case
 
     const lastVisitDate = new Date(lastVisit.visit_date)
+    const tasks = tasksByPatient.get(p.id) || []
+
+    if (tasks.length > 0) {
+      const first = tasks[0]
+      const dueDate = first.due_at ? new Date(first.due_at) : lastVisitDate
+      overdue.push({
+        id: p.id,
+        name: p.full_name,
+        phone: p.phone,
+        kind: p.is_ortho ? 'ortho' : 'general',
+        dueSince: dueDate.toISOString(),
+        reason: `${tasks.length} open treatment task${tasks.length === 1 ? '' : 's'} · ${first.title}${first.tooth_fdi ? ` on tooth ${first.tooth_fdi}` : ''}`,
+        lastVisit: lastVisitDate.toISOString(),
+        taskCount: tasks.length,
+      })
+      continue
+    }
 
     if (p.is_ortho && lastVisit.ortho_quick_log?.next_visit_weeks) {
       const dueDate = new Date(

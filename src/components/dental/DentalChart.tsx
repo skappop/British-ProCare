@@ -264,11 +264,13 @@ function SideLabels({ top }: { top: boolean }) {
 export default function DentalChart({
   initial,
   onSave,
+  onPlanTreatment,
   compact = false,
   large = false,
 }: {
   initial: OdontogramData
   onSave: (changes: Record<string, ToothData | null>) => Promise<SaveResult>
+  onPlanTreatment?: (fdi: string, findings: Finding[]) => void
   compact?: boolean
   /** Bigger teeth, for the phone charting page. */
   large?: boolean
@@ -762,6 +764,11 @@ export default function DentalChart({
               Clear tooth
             </button>
           </div>
+          {onPlanTreatment && selectedFindings.some((finding) => ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'caries', 'need_filling', 'fracture', 'watch', 'planned', 'need_rct', 'need_crown', 'extract', 'impacted'].includes(finding.code)) && (
+            <button type="button" onClick={() => onPlanTreatment(selected, selectedFindings)} className="inline-flex items-center gap-1.5 rounded-control border border-gold/40 bg-gold/10 px-3 py-2 text-xs font-medium text-gold-deep hover:bg-gold/15">
+              Plan treatment for {palmer(selected)}
+            </button>
+          )}
           </div>
           {data[selected]?.note && <p className="text-xs text-ink/55">Note: {data[selected]!.note}</p>}
         </div>

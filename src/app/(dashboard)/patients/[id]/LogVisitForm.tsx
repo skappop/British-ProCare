@@ -8,6 +8,7 @@ import { logVisit, getLastClinicalLogs, getBomPreview, getLastVisitSetup } from 
 import OrthoQuickLog, { QuickLogData } from './OrthoQuickLog'
 import StructuredTreatmentLog, { type LogCategory, type StructuredClinicalLog } from './TreatmentLogs'
 import { CONSERVATIVE_FINDING_CODES, CONSERVATIVE_TREATMENTS, findingLabel, findingsOf, palmer, type OdontogramData, type ToothCompletion } from '@/components/dental/charting'
+import { TASK_CATEGORY_LABELS, taskIsOpen, type ClinicalTask } from '@/lib/clinicalTasks'
 
 type Procedure = { id: string; code: string; name: string; base_fee: number | null; category: string }
 type BomLine = { name: string; unit: string; stock: number; qty: number }
@@ -64,6 +65,9 @@ type Draft = {
   odontogram: OdontogramData
   completedTeeth: ToothCompletion[]
   setCompletedTeeth: (value: ToothCompletion[]) => void
+  clinicalTasks: ClinicalTask[]
+  completedTaskIds: string[]
+  setCompletedTaskIds: (value: string[]) => void
   bomPreview: BomLine[]
   stockProblem: boolean
   isPending: boolean
@@ -85,6 +89,7 @@ export function VisitDraft({
   isOrtho,
   canUseOrthoLog,
   initialOdontogram,
+  initialTasks,
   finishesVisit = false,
   children,
 }: {
@@ -93,6 +98,7 @@ export function VisitDraft({
   isOrtho: boolean
   canUseOrthoLog: boolean
   initialOdontogram: OdontogramData
+  initialTasks?: ClinicalTask[]
   /** The patient is on today's list, so saving also marks them seen. */
   finishesVisit?: boolean
   children: React.ReactNode
@@ -108,6 +114,8 @@ export function VisitDraft({
   const [quickLogData, setQuickLogData] = useState<QuickLogData | null>(null)
   const [clinicalLogs, setClinicalLogs] = useState<ClinicalLogs>({})
   const [completedTeeth, setCompletedTeeth] = useState<ToothCompletion[]>([])
+  const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([])
+  const [clinicalTasks] = useState<ClinicalTask[]>(initialTasks || [])
   const [odontogram] = useState<OdontogramData>(initialOdontogram || {})
   const [bomPreview, setBomPreview] = useState<BomLine[]>([])
 
@@ -143,6 +151,7 @@ export function VisitDraft({
     }
     if (Object.keys(logsForVisit).length > 0) formData.set('clinical_logs', JSON.stringify(logsForVisit))
     if (completedTeeth.length > 0) formData.set('completed_teeth', JSON.stringify(completedTeeth))
+    if (completedTaskIds.length > 0) formData.set('completed_task_ids', JSON.stringify(completedTaskIds))
     // A current appointment goes back to the day's board after saving. A
     // standalone patient record stays open so the updated chart is visible.
     if (finishesVisit) formData.set('then', 'appointments')
@@ -180,6 +189,9 @@ export function VisitDraft({
     odontogram,
     completedTeeth,
     setCompletedTeeth,
+    clinicalTasks,
+    completedTaskIds,
+    setCompletedTaskIds,
     bomPreview,
     stockProblem,
     isPending,
@@ -208,6 +220,7 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
   const [activeTooth, setActiveTooth] = useState<string | null>(null)
   const [completionId, setCompletionId] = useState(CONSERVATIVE_TREATMENTS[0].treatment)
   const activeCompletion = CONSERVATIVE_TREATMENTS.find((item) => item.treatment === completionId) || CONSERVATIVE_TREATMENTS[0]
+  const openTasks = useMemo(() => d.clinicalTasks.filter((task) => taskIsOpen(task) && !d.completedTaskIds.includes(task.id)), [d.clinicalTasks, d.completedTaskIds])
   useEffect(() => {
     setOpenLogs((previous) => {
       const next = { ...previous }
@@ -237,6 +250,10 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
     const teeth = Array.isArray(current.tooth) ? current.tooth : current.tooth ? [current.tooth] : []
     d.setClinicalLog('restorative', { ...current, tooth: Array.from(new Set([...teeth, activeTooth])) })
     setActiveTooth(null)
+  }
+
+  function toggleTask(taskId: string) {
+    d.setCompletedTaskIds(d.completedTaskIds.includes(taskId) ? d.completedTaskIds.filter((id) => id !== taskId) : [...d.completedTaskIds, taskId])
   }
 
   return (
@@ -290,6 +307,20 @@ export function TreatmentPicker({ lastVisit }: { lastVisit: { date: string; proc
                   </button>
                 ))}
               </div>
+              {openTasks.filter((task) => task.category === category).length > 0 && (
+                <div className="mt-2 rounded-control border border-gold/25 bg-gold/[0.05] p-3">
+                  <p className="text-[10px] font-mono uppercase tracking-wider text-gold-deep">Open work for this category</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {openTasks.filter((task) => task.category === category).map((task) => {
+                      const chosen = d.completedTaskIds.includes(task.id)
+                      return <button key={task.id} type="button" onClick={() => toggleTask(task.id)} className={`rounded-full border px-3 py-1.5 text-xs ${chosen ? 'border-success bg-success text-white' : 'border-gold/40 bg-white text-gold-deep hover:bg-gold/10'}`}>
+                        {chosen ? '✓ ' : ''}{task.tooth_fdi ? `${palmer(task.tooth_fdi)} · ` : ''}{task.title}
+                      </button>
+                    })}
+                  </div>
+                  {d.completedTaskIds.some((id) => openTasks.some((task) => task.id === id && task.category === category)) && <p className="mt-2 text-xs text-success">Selected work will be completed when this visit is saved.</p>}
+                </div>
+              )}
               {logCategory && selectedCategory && (
                 <div className="mt-3 overflow-hidden rounded-card border border-teal/25 bg-teal/[0.03]">
                   <button type="button" onClick={() => setOpenLogs((current) => ({ ...current, [logCategory]: !current[logCategory] }))} aria-expanded={!!openLogs[logCategory]} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-teal/[0.06]">
